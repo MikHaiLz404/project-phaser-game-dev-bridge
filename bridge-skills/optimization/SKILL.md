@@ -17,10 +17,10 @@ description: "Bridge skill: Optimize Phaser 4 game performance. Maps performance
 ```js
 const config = {
     type: Phaser.AUTO,
-    pixelArt: true,        // Disable smoothing
-    roundPixels: true,     // Round to integer positions
-    antialias: false,      // Disable AA
-    transparent: false     // No alpha compositing
+    pixelArt: true,
+    roundPixels: true,
+    antialias: false,
+    transparent: false
 };
 ```
 
@@ -34,10 +34,7 @@ spawnBullet() {
 }
 
 // Good: pool
-this.bullets = this.physics.add.group({
-    maxSize: 50,
-    runChildUpdate: false
-});
+this.bullets = this.physics.add.group({ maxSize: 50 });
 
 spawnBullet() {
     const b = this.bullets.get(x, y, 'bullet');
@@ -49,13 +46,7 @@ spawnBullet() {
 ## 3. Camera Optimization
 
 ```js
-// Only render visible area
 camera.setBounds(0, 0, mapWidth, mapHeight);
-
-// Cull off-screen objects
-this.physics.world.on('worldbounds', (body) => {
-    body.gameObject.setActive(false).setVisible(false);
-});
 ```
 
 ## 4. Reduce Draw Calls
@@ -66,38 +57,32 @@ for (let i = 0; i < 100; i++) {
     this.add.sprite(x + i * 10, y, 'particle');
 }
 
-// Good: use particle emitter
-this.add.particles(x, y, 'particle', {
-    quantity: 100,
-    lifespan: 1000
-});
+// Good: particle emitter
+this.add.particles(x, y, 'particle', { quantity: 100 });
 ```
 
 ## 5. Texture Atlas
 
 ```js
-// Bad: many individual images
+// Bad: many images
 this.load.image('player', 'assets/player.png');
 this.load.image('enemy', 'assets/enemy.png');
-this.load.image('bullet', 'assets/bullet.png');
 
-// Good: single atlas
+// Good: atlas
 this.load.atlas('sprites', 'assets/sprites.png', 'assets/sprites.json');
 ```
 
 ## 6. Profiling
 
 ```js
-// Log FPS
+// Log FPS every second
 this.time.addEvent({
     delay: 1000,
-    callback: () => {
-        console.log('FPS:', this.game.loop.actualFps);
-    },
+    callback: () => console.log('FPS:', this.game.loop.actualFps),
     loop: true
 });
 
-// Check texture memory
+// Check textures
 console.log(this.textures.getTextureKeys());
 ```
 
@@ -108,7 +93,7 @@ console.log(this.textures.getTextureKeys());
 | Draw calls | < 50 |
 | Active sprites | < 200 |
 | Texture memory | < 128MB |
-| FPS target | 60 (30 minimum) |
+| FPS target | 60 (30 min) |
 
 ---
 
@@ -119,3 +104,4 @@ console.log(this.textures.getTextureKeys());
 3. **Round pixels for pixel art** — prevents sub-pixel jitter
 4. **Kill off-screen objects** — don't render what you can't see
 5. **Profile on target device** — desktop FPS != mobile FPS
+6. **`runChildUpdate: false`** if children don't have update() — saves overhead

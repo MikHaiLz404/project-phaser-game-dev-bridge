@@ -17,8 +17,8 @@ description: "Bridge skill: Handle screen sizing in Phaser 4. Maps mobile/respon
 ```js
 const config = {
     scale: {
-        mode: Phaser.Scale.FIT,           // Fit to screen
-        autoCenter: Phaser.Scale.CENTER_BOTH, // Center canvas
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
         width: 800,
         height: 600,
         min: { width: 400, height: 300 },
@@ -29,12 +29,12 @@ const config = {
 
 ## 2. Scale Modes
 
-| Mode | Behavior |
-|------|----------|
-| `FIT` | Scale to fit, maintain aspect ratio |
-| `RESIZE` | Resize canvas to window |
-| `ENVELOP` | Scale to cover, may crop |
-| `NONE` | No scaling |
+| Mode | Behavior | Use When |
+|------|----------|----------|
+| `FIT` | Fit + letterbox | Most games |
+| `RESIZE` | Match window | Full-screen apps |
+| `ENVELOP` | Cover + may crop | Background-heavy |
+| `NONE` | No scaling | Fixed size |
 
 ## 3. Responsive Layout
 
@@ -44,12 +44,12 @@ create() {
     const h = this.cameras.main.height;
 
     // UI positioned relative to screen
-    this.hpBar = this.add.rectangle(w * 0.1, h * 0.05, 200, 20, 0x00ff00);
-    this.scoreText = this.add.text(w * 0.9, h * 0.05, '0', { fontSize: '24px' })
-        .setOrigin(1, 0);
+    this.hpBar = this.add.rectangle(w * 0.1, h * 0.05, 200, 16, 0x00ff00)
+        .setOrigin(0, 0.5).setScrollFactor(0);
 
-    // Center game area
-    this.player = this.add.rectangle(w / 2, h / 2, 32, 48, 0x00ff00);
+    this.scoreText = this.add.text(w * 0.9, h * 0.05, '0', {
+        fontSize: '24px', color: '#ffffff'
+    }).setOrigin(1, 0).setScrollFactor(0);
 }
 ```
 
@@ -76,11 +76,11 @@ create() {
     const w = this.cameras.main.width;
     const h = this.cameras.main.height;
 
-    // Left side = move
+    // Left = move
     this.moveZone = this.add.rectangle(w * 0.25, h * 0.7, w * 0.5, h * 0.3, 0xffffff, 0.1)
         .setInteractive().setScrollFactor(0);
 
-    // Right side = attack
+    // Right = attack
     this.attackZone = this.add.rectangle(w * 0.75, h * 0.7, w * 0.5, h * 0.3, 0xff0000, 0.1)
         .setInteractive().setScrollFactor(0);
 
@@ -92,12 +92,30 @@ create() {
 ## 6. Orientation Lock
 
 ```js
-// Lock to landscape
-this.scale.orientation = Phaser.Scale.Orientation.LANDSCAPE;
-
 // Check orientation
 if (this.scale.orientation === Phaser.Scale.Orientation.PORTRAIT) {
     this.showRotatePrompt();
+}
+
+// Listen for changes
+this.scale.on('orientationchange', (orientation) => {
+    if (orientation === Phaser.Scale.Orientation.PORTRAIT) {
+        this.showRotatePrompt();
+    } else {
+        this.hideRotatePrompt();
+    }
+});
+```
+
+## 7. Safe Areas (Notch)
+
+```js
+create() {
+    const top = this.scale.safeArea?.top || 0;
+    const bottom = this.scale.safeArea?.bottom || 0;
+
+    // Position UI below notch
+    this.scoreText = this.add.text(10, top + 10, '0', { fontSize: '24px' });
 }
 ```
 
@@ -110,3 +128,5 @@ if (this.scale.orientation === Phaser.Scale.Orientation.PORTRAIT) {
 3. **Test at multiple sizes** — 400x300, 800x600, 1920x1080
 4. **Touch zones need minimum size** — 48px minimum for fingers
 5. **handleResize fires on orientation change** — reposition UI
+6. **`touch-action: none`** on canvas — prevents browser gestures
+7. **Safe areas vary by device** — iPhone notch != Android punch-hole

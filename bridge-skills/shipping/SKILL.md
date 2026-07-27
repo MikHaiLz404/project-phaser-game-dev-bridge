@@ -58,6 +58,7 @@ export default defineConfig({
 "scripts": {
     "deploy": "npm run build && gh-pages -d dist"
 }
+npm run deploy
 ```
 
 ### Netlify / Vercel
@@ -70,16 +71,7 @@ export default defineConfig({
 2. Zip the `dist/` folder
 3. Upload to itch.io
 
-## 5. Performance Checklist
-
-- [ ] Minify JS (`npm run build` does this)
-- [ ] Compress images (use TinyPNG)
-- [ ] Use texture atlas (reduce draw calls)
-- [ ] Audio in OGG + MP3 (browser compat)
-- [ ] Test on mobile devices
-- [ ] Set `<meta viewport>` tag
-
-## 6. HTML Template
+## 5. HTML Template
 
 ```html
 <!DOCTYPE html>
@@ -89,9 +81,9 @@ export default defineConfig({
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>My Game</title>
     <style>
-        * { margin: 0; padding: 0; }
-        body { background: #000; overflow: hidden; }
-        canvas { display: block; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; overflow: hidden; touch-action: none; }
+        canvas { display: block; margin: 0 auto; }
     </style>
 </head>
 <body>
@@ -100,12 +92,34 @@ export default defineConfig({
 </html>
 ```
 
+## 6. Performance Checklist
+
+- [ ] Minify JS (`npm run build` does this)
+- [ ] Compress images (use TinyPNG)
+- [ ] Use texture atlas (reduce draw calls)
+- [ ] Audio in OGG + MP3 (browser compat)
+- [ ] Test on mobile devices
+- [ ] Set `<meta viewport>` tag
+- [ ] Set `touch-action: none` on body
+- [ ] Remove console.log in production
+
+## 7. File Size Budget
+
+| Asset | Target | Max |
+|-------|--------|-----|
+| JS bundle | < 500KB | 1MB |
+| Images | < 2MB | 5MB |
+| Audio | < 1MB | 3MB |
+| Total | < 5MB | 10MB |
+
 ---
 
 ## Pitfalls
 
-1. **Always set base: './'** — prevents broken paths on CDN
+1. **Always set `base: './'`** — prevents broken paths on CDN
 2. **Test on real mobile** — emulator != real device
 3. **OGG + MP3 audio** — some browsers only support one
 4. **Compress everything** — images, audio, JSON
 5. **Don't commit node_modules** — use .gitignore
+6. **`touch-action: none`** — prevents scroll on mobile
+7. **`user-scalable=no`** — prevents pinch zoom during gameplay
