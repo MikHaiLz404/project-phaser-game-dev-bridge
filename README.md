@@ -49,6 +49,9 @@ Each bridge skill connects a MengTo game design pattern to Phaser 4 implementati
 3. **inventory-system** — Items, equipment, stacking, save/load
 4. **camera-system** — Follow, shake, zoom, cinematic, fade
 
+### Integration
+21. **threejs-overlay** — Two-Canvas Sandwich: Phaser 2D + Three.js 3D layer via independent WebGL contexts. Drop-in for img2threejs-generated factory modules (`public/models/*.js`).
+
 ### Visual & Audio
 5. **vfx-system** — Performance tiers, combat effects, environmental
 6. **particles** — ParticleEmitter API, sparks, trails, rain

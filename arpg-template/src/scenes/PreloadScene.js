@@ -16,6 +16,8 @@ export class PreloadScene extends Phaser.Scene {
     }
 
     create() {
-        this.scene.start('Game');
+        // Route to CombatTest scene (default for POC testing)
+        // Switch to 'Game' when combat integration is complete
+        this.scene.start('CombatTest');
     }
 }

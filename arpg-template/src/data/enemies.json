@@ -6,8 +6,21 @@
         "attackRange": 30,
         "attackDamage": 10,
         "attackCooldown": 2000,
+        "attackDuration": 600,
         "leashRange": 300,
-        "color": "0x00ff00"
+        "spawnX": 600,
+        "spawnY": 320,
+        "displayWidth": 32,
+        "displayHeight": 32,
+        "colors": {
+            "idleColor": "0x00cc44",
+            "patrolColor": "0x22aa55",
+            "chaseColor": "0x44dd66",
+            "attackColor": "0xffffff",
+            "cooldownColor": "0x228833",
+            "retreatColor": "0x666666"
+        },
+        "label": "Enemy: Slime"
     },
     "skeleton": {
         "hp": 100,
@@ -16,8 +29,21 @@
         "attackRange": 45,
         "attackDamage": 20,
         "attackCooldown": 1500,
+        "attackDuration": 500,
         "leashRange": 400,
-        "color": "0xcccccc"
+        "spawnX": 600,
+        "spawnY": 260,
+        "displayWidth": 32,
+        "displayHeight": 32,
+        "colors": {
+            "idleColor": "0xcccccc",
+            "patrolColor": "0x999999",
+            "chaseColor": "0xffffff",
+            "attackColor": "0xffccff",
+            "cooldownColor": "0x888888",
+            "retreatColor": "0x666666"
+        },
+        "label": "Enemy: Skeleton"
     },
     "boss_dragon": {
         "hp": 500,
@@ -26,8 +52,21 @@
         "attackRange": 80,
         "attackDamage": 50,
         "attackCooldown": 1000,
+        "attackDuration": 400,
         "leashRange": 600,
         "phaseThresholds": [0.7, 0.3],
-        "color": "0xff0000"
+        "spawnX": 620,
+        "spawnY": 240,
+        "displayWidth": 48,
+        "displayHeight": 48,
+        "colors": {
+            "idleColor": "0xff4444",
+            "patrolColor": "0xff6644",
+            "chaseColor": "0xff2222",
+            "attackColor": "0xffffff",
+            "cooldownColor": "0xaa2222",
+            "retreatColor": "0x666666"
+        },
+        "label": "Enemy: Dragon Boss"
     }
 }

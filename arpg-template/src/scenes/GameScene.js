@@ -34,6 +34,14 @@ export class GameScene extends Phaser.Scene {
 
         // UI Scene
         this.scene.launch('UIScene');
+
+        // 3D background layer — launches in parallel so it keeps rendering
+        // even when GameScene is paused (e.g. on menu open). Drop the demo
+        // placeholder model by default; replace `modelUrl` with an
+        // img2threejs-generated factory when one is ready.
+        this.scene.launch('ThreeOverlayScene', {
+            modelUrl: '/models/createDemoPropModel.js',
+        });
     }
 
     update(time, delta) {

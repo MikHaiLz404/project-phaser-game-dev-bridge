@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phaser ARPG Template — Two-Canvas Sandwich</title>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --phaser-z: 1;     /* UI / 2D world layer */
+            --three-z: 0;     /* 3D background world layer */
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-color);
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        /* Stack the two canvases in the same container.
+           Phaser canvas (UI / 2D world) sits on top — pointer-events: auto.
+           Three.js canvas (3D background) sits below — pointer-events: none,
+           so Phaser gets all click/touch input. */
+        #game-container {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #three-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100% !important;
+            height: 100% !important;
+            z-index: var(--three-z);
+            pointer-events: none;
+            display: block;
+        }
+
+        /* Phaser creates its own canvas inside #game-container; force it on top. */
+        #game-container canvas {
+            position: absolute !important;
+            inset: 0;
+            z-index: var(--phaser-z) !important;
+            pointer-events: auto;
+            display: block;
+        }
+
+        #debug-overlay {
+            position: fixed;
+            top: 8px;
+            right: 8px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.55);
+            color: #9be7ff;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 11px;
+            line-height: 1.5;
+            pointer-events: none;
+            min-width: 180px;
+        }
+        #debug-overlay .label { color: #6f7b8a; }
+        #debug-overlay .value { color: #d2ffd2; }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+    <canvas id="three-canvas"></canvas>
+    <div id="debug-overlay" style="display:none">
+        <div><span class="label">FPS:</span> <span id="dbg-fps" class="value">--</span></div>
+        <div><span class="label">Three objects:</span> <span id="dbg-objects" class="value">0</span></div>
+        <div><span class="label">Phaser scene:</span> <span id="dbg-scene" class="value">--</span></div>
+    </div>
+    <script type="module" src="src/main.js"></script>
+</body>
+</html>
