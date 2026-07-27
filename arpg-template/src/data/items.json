@@ -1,0 +1,35 @@
+{
+    "iron_sword": {
+        "id": "iron_sword",
+        "name": "Iron Sword",
+        "type": "weapon",
+        "rarity": "common",
+        "stackable": false,
+        "maxStack": 1,
+        "equipmentSlot": "weapon",
+        "stats": { "attack": 10 },
+        "description": "A sturdy iron sword."
+    },
+    "health_potion": {
+        "id": "health_potion",
+        "name": "Health Potion",
+        "type": "consumable",
+        "rarity": "common",
+        "stackable": true,
+        "maxStack": 10,
+        "equipmentSlot": null,
+        "stats": { "heal": 50 },
+        "description": "Restores 50 HP."
+    },
+    "dragon_armor": {
+        "id": "dragon_armor",
+        "name": "Dragon Armor",
+        "type": "armor",
+        "rarity": "legendary",
+        "stackable": false,
+        "maxStack": 1,
+        "equipmentSlot": "armor",
+        "stats": { "defense": 30, "fireResist": 50 },
+        "description": "Forged from dragon scales."
+    }
+}

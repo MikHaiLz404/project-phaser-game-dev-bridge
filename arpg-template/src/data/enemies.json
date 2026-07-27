@@ -1,0 +1,33 @@
+{
+    "slime": {
+        "hp": 50,
+        "speed": 60,
+        "sightRange": 150,
+        "attackRange": 30,
+        "attackDamage": 10,
+        "attackCooldown": 2000,
+        "leashRange": 300,
+        "color": "0x00ff00"
+    },
+    "skeleton": {
+        "hp": 100,
+        "speed": 80,
+        "sightRange": 200,
+        "attackRange": 45,
+        "attackDamage": 20,
+        "attackCooldown": 1500,
+        "leashRange": 400,
+        "color": "0xcccccc"
+    },
+    "boss_dragon": {
+        "hp": 500,
+        "speed": 100,
+        "sightRange": 500,
+        "attackRange": 80,
+        "attackDamage": 50,
+        "attackCooldown": 1000,
+        "leashRange": 600,
+        "phaseThresholds": [0.7, 0.3],
+        "color": "0xff0000"
+    }
+}
