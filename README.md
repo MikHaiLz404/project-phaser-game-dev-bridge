@@ -43,18 +43,38 @@ npm run dev
 
 Each bridge skill connects a MengTo game design pattern to Phaser 4 implementation:
 
-1. **combat-system** — Timing windows, hit detection, damage
+### Core Systems
+1. **combat-system** — Timing windows, hit detection, combos, damage
 2. **enemy-ai** — State machines, aggro, telegraphs, boss phases
-3. **inventory-system** — Item schemas, equipment, stacking, save/load
+3. **inventory-system** — Items, equipment, stacking, save/load
 4. **camera-system** — Follow, shake, zoom, cinematic, fade
+
+### Visual & Audio
 5. **vfx-system** — Performance tiers, combat effects, environmental
-6. **particles** — ParticleEmitter API, hit sparks, trails, rain
+6. **particles** — ParticleEmitter API, sparks, trails, rain
 7. **audio-system** — SFX layers, music states, spatial audio
-8. **tilemaps** — Tiled integration, collision layers, spawn points
-9. **tweens** — Easing, squash/stretch, chained animations, UI transitions
-10. **groups-and-containers** — Object pooling, UI layouts, entity management
-11. **text-and-bitmaptext** — Dialog boxes, HUD, typewriter, score display
-12. **game-setup** — Config, scenes, boot sequence, project structure
+8. **sprites-and-animations** — Spritesheets, animation playback, projectiles
+
+### Level & World
+9. **tilemaps** — Tiled integration, collision layers, spawn points
+10. **encounter-design** — Arena layout, wave spawning, boss fights
+11. **scenes** — Lifecycle, transitions, data passing, multi-scene
+
+### UI & Display
+12. **text-and-bitmaptext** — Dialog boxes, HUD, typewriter, score
+13. **tweens** — Easing, squash/stretch, chained animations
+14. **groups-and-containers** — Object pooling, UI layouts, entity mgmt
+15. **scale-and-responsive** — Mobile, portrait/landscape, resize
+
+### Data & Persistence
+16. **loading-assets** — Preload, progress bars, lazy load
+17. **save-load** — localStorage, save slots, settings, migration
+
+### Ship & Quality
+18. **game-setup** — Config, scenes, boot sequence, project structure
+19. **optimization** — Draw calls, object pooling, mobile budgets
+20. **testing** — Vitest, unit tests, smoke tests
+21. **shipping** — Build, deploy, CDN, performance checklist
 
 ## Sources
 
