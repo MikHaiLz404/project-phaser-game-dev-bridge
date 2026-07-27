@@ -44,12 +44,17 @@ npm run dev
 Each bridge skill connects a MengTo game design pattern to Phaser 4 implementation:
 
 1. **combat-system** — Timing windows, hit detection, damage
-2. **enemy-ai** — State machines, aggro, telegraphs
-3. **inventory-system** — Item schemas, equipment, stacking
-4. **camera-system** — Follow, shake, zoom, cinematic
-5. **vfx-system** — Particles, filters, performance tiers
-6. **audio-system** — Spatial audio, music states, SFX layers
-7. **game-setup** — Config, scenes, boot sequence
+2. **enemy-ai** — State machines, aggro, telegraphs, boss phases
+3. **inventory-system** — Item schemas, equipment, stacking, save/load
+4. **camera-system** — Follow, shake, zoom, cinematic, fade
+5. **vfx-system** — Performance tiers, combat effects, environmental
+6. **particles** — ParticleEmitter API, hit sparks, trails, rain
+7. **audio-system** — SFX layers, music states, spatial audio
+8. **tilemaps** — Tiled integration, collision layers, spawn points
+9. **tweens** — Easing, squash/stretch, chained animations, UI transitions
+10. **groups-and-containers** — Object pooling, UI layouts, entity management
+11. **text-and-bitmaptext** — Dialog boxes, HUD, typewriter, score display
+12. **game-setup** — Config, scenes, boot sequence, project structure
 
 ## Sources
 
