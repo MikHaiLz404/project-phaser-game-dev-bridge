@@ -161,10 +161,22 @@ export default function createCharacter(spec = {}) {
 
     function setState(next) {
         if (next === state) return;
-        // Leaving an attack mid-swing back to idle is fine; entering attack
-        // cancels anything else (including another attack in flight) — the
-        // player controller's cooldown handles the user-facing lockout.
-        if (state === 'attack') {
+        // PROTECTING the attack state:
+        //   When the character is mid-swing ('attack'), we IGNORE incoming
+        //   setState calls for 'idle'/'walk'/'run' because the player
+        //   controller's per-frame update() unconditionally calls one of
+        //   those every tick to drive the locomotion blend. Letting those
+        //   calls through would cancel the attack animation on the very next
+        //   frame. Only same-state no-ops and a true cancel-out (calling
+        //   setState again with 'attack') are permitted until the swing
+        //   completes internally via animTime.
+        if (state === 'attack' && next !== 'attack') {
+            return;
+        }
+        // Leaving an attack (e.g., explicit cancel or end-of-swing state
+        // set from outside) — clear the active latch.
+        if (state === 'attack' && next === 'attack') {
+            // Re-arming mid-swing — let callers do this to cancel-and-restart
             attackActiveFired = false;
         }
         state = next;
