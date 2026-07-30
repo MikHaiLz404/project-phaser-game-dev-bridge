@@ -370,9 +370,12 @@ export default function createCharacter(spec = {}) {
             armR.rotation.x = swingX;
             armR.rotation.z = elbowZ;
 
-            // Left arm tenses during active window for visual weight
-            const tense = Math.max(0, 1 - Math.abs(t - 0.5) / 0.25) * 0.6;
-            armL.rotation.x = -0.4 - tense * 0.4;
+            // Left arm stays in IDLE pose during the swing — the user only
+            // asked for the right arm (swinging arm) to move. Keeping the
+            // left arm still gives the animation a cleaner read: one limb
+            // moves with purpose, the other anchors the silhouette.
+            armL.rotation.x = Math.sin(animTime * 0.8) * 0.03;  // match idle sway
+            armL.rotation.z = 0;
 
             // Torso twist — small lean into the swing at the active midpoint
             const lean = Math.sin(t * Math.PI) * 0.15;
@@ -427,18 +430,33 @@ export default function createCharacter(spec = {}) {
 
         // -----------------------------------------------------------------
         // Track the right wrist so the swordPivot (child of root) follows
-        // wherever armR ends up. We use getWorldPosition on a tiny probe
-        // attached at the wrist local position (y=-0.55 in armR space) to
-        // grab the world coordinates, then copy them into swordPivot.
+        // wherever armR ends up. The pivot lives on root, so its `.position`
+        // is in root-LOCAL space — we must NOT use armR.matrixWorld (that
+        // includes the player's world transform and would pin the pivot
+        // at the wrist's absolute coordinates, swinging it across the world
+        // every frame the player moves). Instead:
+        //
+        //   localWrist = armR.matrix * (0, -0.55, 0)
+        //
+        // gives us the wrist coordinates in root's frame — that's exactly
+        // what swordPivot.position wants.
         //
         // swordPivot stays at identity rotation in world space (no tilt /
         // swing inheritance from armR), so the blade always points along
         // world +Y — the visual angle of the sword doesn't change when the
-        // player swings. The motion comes from the WRIST ARC, which is
-        // what you want for an "overhead slash" cue.
+        // player swings. The motion comes from the WRIST ARC, which is what
+        // you want for an "overhead slash" cue.
+        //
+        // We must call root.updateMatrix() explicitly to make sure the chain
+        // root → armR.matrix is fresh before sampling — Three.js updates
+        // matrices during render, but our update() runs before render.
         // -----------------------------------------------------------------
-        armR.updateWorldMatrix(true, false);
+        root.updateMatrix();
+        root.updateMatrixWorld(true);  // parent-to-child chain
         swordTrack.set(0, -0.55, 0).applyMatrix4(armR.matrixWorld);
+        // Convert world → root-local by undoing root.matrixWorld
+        const rootInv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+        swordTrack.applyMatrix4(rootInv);
         swordPivot.position.copy(swordTrack);
     }
 
