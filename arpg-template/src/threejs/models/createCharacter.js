@@ -46,8 +46,12 @@ export default function createCharacter(spec = {}) {
     const shoes = spec.shoesColor ?? 0x2a1a0a;
 
     const scale = spec.scale ?? 1.0;
-    const attackDuration = spec.attackDuration ?? 0.45;   // seconds, full swing
-    const attackActiveFraction = 0.35;                    // 35% of swing = active window
+    // attackDuration is mutable so live-tunable via setAttackDuration() —
+    // the GUI slider or external callers can change the swing length
+    // without recreating the character. Use Math.max() at the consumer to
+    // keep it positive; a 0 here would freeze the animation.
+    let attackDuration = spec.attackDuration ?? 0.55;   // seconds, full swing (overhead slash)
+    const attackActiveFraction = 0.50;                  // active window at swing midpoint
     // Position where a melee hitbox would live — relative to root.
     // The active window fires when armR crosses y=0 axis at this x/z offset.
     // Forward = +Z (matches Three.js default forward); character faces +Z too,
@@ -146,6 +150,96 @@ export default function createCharacter(spec = {}) {
     root.scale.setScalar(scale);
 
     // -----------------------------------------------------------------
+    // Right-hand weapon — a low-poly sword that attaches to the wrist of
+    // armR, with per-frame counter-rotation so it always points in a
+    // intuitive direction regardless of armR rotation.
+    //
+    // Why a counter-rotation: armR.rotation.x drives the swing. As that
+    // value grows past 90°, the local +Y axis of armR sweeps PAST the
+    // character's body. If we mounted the sword with its blade pointing
+    // along armR's local +Y, it would flip to point DOWNWARD when the arm
+    // swings overhead — the exact opposite of what an overhead slash wants.
+    //
+    // Instead, the sword lives in its own `swordPivot` group attached to
+    // armR at the wrist. Each frame we orient the pivot so its local +Y
+    // points at the character's facing +Z (toward the camera/front). The
+    // sword's blade extends along that axis. Result: the sword always
+    // presents as "held forward" regardless of how the arm rotates, while
+    // the wrist tracking still gives it natural motion.
+    //
+    // Dimensions:
+    //   hilt    0.20 long — grip (cylinder)
+    //   guard   0.18 wide — brass cross-piece
+    //   blade   0.55 long — extends from the wrist toward the tip
+    //   tip     0.10 cone — sharp leading edge
+    //   pommel  0.06 ball — bottom of the grip
+    //
+    // Total length ≈ 0.85 — about half the character's height, reads as a
+    // "short sword" from any camera distance.
+    // -----------------------------------------------------------------
+    const matHilt = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.7, metalness: 0.2 });   // wood-tone grip
+    const matGuard = new THREE.MeshStandardMaterial({ color: 0xc8b878, roughness: 0.4, metalness: 0.6 });  // brass guard
+    const matBlade = new THREE.MeshStandardMaterial({ color: 0xdde7f0, roughness: 0.2, metalness: 0.9 });  // polished steel
+    const matPommel = new THREE.MeshStandardMaterial({ color: 0xc8b878, roughness: 0.4, metalness: 0.6 });
+
+    // swordPivot — put it on the ROOT instead of armR so its world rotation
+    // stays free of the arm's swing rotation. We'll sync its WORLD position
+    // to the right wrist every frame in update().
+    //
+    // Why: attaching to armR meant the sword's orientation swung wildly with
+    // the arm (e.g., at rotation.x = -2.6 the local +Y axis flipped past
+    // the body — visually the sword pointed DOWNWARD instead of upward).
+    // Counter-rotating the pivot each frame is fragile and order-dependent;
+    // keeping it on root + tracking position is simpler and more readable.
+    const swordPivot = new THREE.Group();
+    swordPivot.name = 'swordPivot';
+    root.add(swordPivot);
+
+    const sword = new THREE.Group();
+    sword.name = 'sword';
+
+    // World-space sword layout — blade always points along world +Y so the
+    // sword reads as "held vertically" regardless of how the player is
+    // posed. Both idle and attack swings use this stable orientation; the
+    // visual difference comes from where the sword IS (wrist tracking) and
+    // the player's whole-body posture, not from a rotating blade.
+    //
+    //   pommel (lowest, in the palm-side) — y=-0.10
+    //   grip   (cylinder)              — y=0.00 (centered)
+    //   guard  (cross-piece)           — y=+0.10
+    //   blade  (long box, upward)      — y=+0.40 (center)
+    //   tip    (cone at far end)       — y=+0.75
+    const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), matPommel);
+    pommel.position.set(0, -0.10, 0);
+    pommel.castShadow = true;
+    sword.add(pommel);
+
+    const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.20, 8), matHilt);
+    hilt.position.set(0, 0.00, 0);
+    hilt.castShadow = true;
+    sword.add(hilt);
+
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.10), matGuard);
+    guard.position.set(0, 0.13, 0);
+    guard.castShadow = true;
+    sword.add(guard);
+
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.55, 0.02), matBlade);
+    blade.position.set(0, 0.45, 0);  // blade center at y=0.45, extends 0.20 below and 0.35 above
+    blade.castShadow = true;
+    sword.add(blade);
+
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.10, 4), matBlade);
+    tip.position.set(0, 0.78, 0);
+    tip.castShadow = true;
+    sword.add(tip);
+
+    swordPivot.add(sword);
+
+    // Reusable vector to avoid per-frame allocation
+    const swordTrack = new THREE.Vector3();
+
+    // -----------------------------------------------------------------
     // Animation state
     // -----------------------------------------------------------------
     let state = 'idle';
@@ -181,6 +275,18 @@ export default function createCharacter(spec = {}) {
         }
         state = next;
         animTime = 0;
+    }
+
+    /**
+     * Live-tune the swing duration from outside (e.g., the player controller
+     * exposing a GUI slider). Mutates the closure-local attackDuration so
+     * the animation curve changes mid-game without recreating the character.
+     */
+    function setAttackDuration(seconds) {
+        attackDuration = Math.max(0.05, seconds);
+    }
+    function getAttackDuration() {
+        return attackDuration;
     }
 
     /**
@@ -224,34 +330,45 @@ export default function createCharacter(spec = {}) {
             bobAmount = Math.abs(Math.sin(animTime * 12)) * 0.07;
             torso.scale.set(1, 1, 1);
         } else if (state === 'attack') {
-            // Swing arc over attackDuration seconds. Right arm (armR) sweeps
-            // from raised ("windup" — first 35%) through "active" (middle 30%,
-            // hits here) into "recovery" (last 35%, returns to rest).
+            // Overhead-slash swing: arm lifts the sword ABOVE the head, then
+            // brings it down in a powerful arc, then returns to rest.
             //
-            // Curve: half-cosine. At t=0 → cos(0)=1 → arm raised fully back.
-            // At t=0.5 → cos(π)=−1 → arm forward at full extension.
-            // At t=1 → cos(2π)=1 → arm back to rest.
+            //   windup   (0..0.30)  — armR.x sweeps from 0 → -2.6 rad
+            //                         ≈ arm rotated ~150° backward, sword
+            //                         ends up overhead.
+            //   active   (0.30..0.65) — armR.x slashes from -2.6 → +1.0 rad.
+            //                         Sword arcs OVERHEAD then DOWN through
+            //                         the front of the body. Hits between
+            //                         t=0.45–0.55 (mid-swing).
+            //   recovery (0.65..1.0) — armR.x returns to 0 + armR.z decays.
+            //
+            // armR.z adds a subtle outward elbow flare so the arc looks like
+            // it actually swings "around" the body rather than sliding in
+            // a flat plane.
             const t = Math.min(1, animTime / attackDuration);
 
-            // Rotation on armR.x drives the swing.
-            // windup   (0..0.35) — arm lifts back to −1.2 rad
-            // active   (0.35..0.65) — arm swings forward to +1.6 rad
-            // recovery (0.65..1.0) — arm returns to ~0
             let swingX = 0;
-            if (t < 0.35) {
-                // Windup: lerp from 0 → −1.2 rad (arm raised behind body)
-                const w = t / 0.35;
-                swingX = -1.2 * w;
+            let elbowZ = 0;
+            if (t < 0.30) {
+                // Windup — arm reaches overhead. Linear lerp for predictability.
+                const w = t / 0.30;
+                swingX = -2.6 * w;
+                elbowZ = -0.4 * w;   // elbow flares out slightly
             } else if (t < 0.65) {
-                // Active: lerp from −1.2 → +1.6 rad (arm sweeps forward)
-                const w = (t - 0.35) / 0.30;
-                swingX = -1.2 + (1.6 - -1.2) * w;
+                // Active — fast downward slash. Curve biased toward the
+                // start (when the sword is at apex) so the tip travels
+                // FAST through the hit point.
+                const w = (t - 0.30) / 0.35;
+                swingX = -2.6 + (1.0 - -2.6) * w;
+                elbowZ = -0.4 + 0.5 * w;   // elbow recovers inward during slash
             } else {
-                // Recovery: lerp from +1.6 → 0 (arm back to neutral)
+                // Recovery — arm returns to rest pose.
                 const w = (t - 0.65) / 0.35;
-                swingX = 1.6 * (1 - w);
+                swingX = 1.0 * (1 - w);
+                elbowZ = 0.1 * (1 - w);
             }
             armR.rotation.x = swingX;
+            armR.rotation.z = elbowZ;
 
             // Left arm tenses during active window for visual weight
             const tense = Math.max(0, 1 - Math.abs(t - 0.5) / 0.25) * 0.6;
@@ -307,6 +424,22 @@ export default function createCharacter(spec = {}) {
         torso.position.y = baseY.torso + bobAmount;
         armL.position.y = baseY.armL + bobAmount;
         armR.position.y = baseY.armR + bobAmount;
+
+        // -----------------------------------------------------------------
+        // Track the right wrist so the swordPivot (child of root) follows
+        // wherever armR ends up. We use getWorldPosition on a tiny probe
+        // attached at the wrist local position (y=-0.55 in armR space) to
+        // grab the world coordinates, then copy them into swordPivot.
+        //
+        // swordPivot stays at identity rotation in world space (no tilt /
+        // swing inheritance from armR), so the blade always points along
+        // world +Y — the visual angle of the sword doesn't change when the
+        // player swings. The motion comes from the WRIST ARC, which is
+        // what you want for an "overhead slash" cue.
+        // -----------------------------------------------------------------
+        armR.updateWorldMatrix(true, false);
+        swordTrack.set(0, -0.55, 0).applyMatrix4(armR.matrixWorld);
+        swordPivot.position.copy(swordTrack);
     }
 
     root.userData = {
@@ -314,7 +447,7 @@ export default function createCharacter(spec = {}) {
         setSwingReturn,
         update,
         getState: () => state,
-        parts: { torso, head, hairCap, armL, armR, legL, legR, shoeL, shoeR },
+        parts: { torso, head, hairCap, armL, armR, legL, legR, shoeL, shoeR, sword },
         // Attack metadata — exposed for hitbox / Phase 4 subscribers
         attack: {
             duration: attackDuration,
@@ -329,6 +462,9 @@ export default function createCharacter(spec = {}) {
             state,
             animTime,
         }),
+        // Live-tune hook for the swing curve
+        setAttackDuration,
+        getAttackDuration,
         // Useful metadata for game logic (height, ground offset)
         height: 1.55 * scale,
         groundY: 0,

@@ -38,8 +38,8 @@ const tunables = {
     cameraDistance: 7.0,  // third-person orbit radius
     cameraHeight: 3.2,    // vertical offset above ground
     cameraSmoothing: 6.0, // exponential lerp speed
-    attackDuration: 0.45, // seconds, full swing (must match createCharacter default)
-    attackCooldown: 0.55, // seconds, locked out after a swing finishes
+    attackDuration: 0.55, // seconds, full swing (overhead slash needs headroom)
+    attackCooldown: 0.45, // seconds, locked out after a swing finishes
 };
 
 // Attack input mode — two schemes, toggled in GUI:
@@ -557,8 +557,7 @@ export default function createPlayerController(opts = {}) {
         set attackDuration(v) {
             tunables.attackDuration = v;
             // Live-update character spec so the swing curve changes mid-game
-            const timing = player.userData.getAttackTiming();
-            timing.duration = v;
+            player.userData.setAttackDuration(v);
         },
         get attackCooldown() { return tunables.attackCooldown; },
         set attackCooldown(v) { tunables.attackCooldown = v; },
