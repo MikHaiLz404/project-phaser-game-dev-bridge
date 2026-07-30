@@ -220,46 +220,50 @@ export default function createCharacter(spec = {}) {
     }
 
     if (equipSword) {
-        // World-space sword layout — blade points along local +Z (forward).
-        // In the rest pose (arm hanging at the side) this means the sword is
-        // held out in front of the player at hip/chest height, tip pointing
-        // away from the body — the natural relaxed grip of an ARPG character
-        // who has their weapon drawn but isn't actively swinging.
+        // Visible long-sword dimensions — the blade is fat enough to read
+        // from a third-person camera distance (≈0.06 × 0.10 cross-section,
+        // ~6cm thick on a 1.55m tall character — proportional to a
+        // western arming sword).
         //
-        //   hilt   (cylinder)   — z=-0.10  (in the hand)
-        //   guard  (cross-piece) — z=+0.00
-        //   blade  (long box)    — z=+0.30  (extending forward)
-        //   tip    (cone)        — z=+0.65
-        //   pommel (ball)        — z=-0.18  (behind the grip)
+        //   pommel  (sphere)         — z=-0.16  behind the grip
+        //   hilt    (cylinder 0.22)  — z=-0.05  in the hand
+        //   guard   (box 0.22 × 0.06)— z=+0.06  cross-piece
+        //   blade   (box 0.06 × 0.10 cross × 0.75 long)
+        //                          — z=+0.46  center; extends to z ≈ +0.84
+        //   tip     (cone 0.07 base × 0.12 long)
+        //                          — z=+0.88  sharp leading edge
+        //
+        // Total length ≈ 1.05 — slightly over half the character's height,
+        // reads as a 'long sword' from any camera distance.
         //
         // Note: in Worldspace, +Z = forward when the player faces away from the
         // camera (character's local +Z); if the player rotates 180°, the local
         // rotation.y update we apply below keeps the blade pointing in the new
         // forward direction automatically.
-        const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), matPommel);
-        pommel.position.set(0, 0, -0.18);
+        const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), matPommel);
+        pommel.position.set(0, 0, -0.16);
         pommel.castShadow = true;
         sword.add(pommel);
 
-        const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.20, 8), matHilt);
+        const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.055, 0.22, 8), matHilt);
         hilt.rotation.x = Math.PI / 2;  // rotate cylinder so length axis = Z
-        hilt.position.set(0, 0, -0.10);
+        hilt.position.set(0, 0, -0.05);
         hilt.castShadow = true;
         sword.add(hilt);
 
-        const guard = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.04, 0.18), matGuard);
-        guard.position.set(0, 0, 0.00);
+        const guard = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.06, 0.06), matGuard);
+        guard.position.set(0, 0, 0.06);
         guard.castShadow = true;
         sword.add(guard);
 
-        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.55, 0.05), matBlade);
-        blade.position.set(0, 0, 0.30);  // blade center at z=0.30
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.75, 0.10), matBlade);
+        blade.position.set(0, 0, 0.46);  // blade center at z=0.46, length 0.75 → extends z=0.085..0.835
         blade.castShadow = true;
         sword.add(blade);
 
-        const tip = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.10, 4), matBlade);
+        const tip = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.12, 4), matBlade);
         tip.rotation.x = -Math.PI / 2;  // cone default +Y → rotate to +Z
-        tip.position.set(0, 0, 0.63);
+        tip.position.set(0, 0, 0.88);  // sits at far end of the blade, pointing further forward
         tip.castShadow = true;
         sword.add(tip);
 
