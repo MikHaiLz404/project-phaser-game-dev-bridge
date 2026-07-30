@@ -38,7 +38,16 @@ const tunables = {
     cameraDistance: 7.0,  // third-person orbit radius
     cameraHeight: 3.2,    // vertical offset above ground
     cameraSmoothing: 6.0, // exponential lerp speed
+    attackDuration: 0.45, // seconds, full swing (must match createCharacter default)
+    attackCooldown: 0.55, // seconds, locked out after a swing finishes
 };
+
+// Attack input mode — two schemes, toggled in GUI:
+//   • 'LMB' (default) — left-click swings; right-drag orbits camera
+//   • 'RMB'           — right-click swings; left-drag orbits camera (rare)
+// For ARPG convention LMB is the right call; the toggle is here so power
+// users can rebind without editing source.
+let attackInputMode = 'LMB';
 
 // Follow mode: when true (default), camera orbits around the player via
 // left-drag. When false, the player controller stops overriding the camera
@@ -150,6 +159,76 @@ export default function createPlayerController(opts = {}) {
     let verticalVelocity = 0;        // current vertical velocity
     let isGrounded = true;           // false while airborne
 
+    // -----------------------------------------------------------------
+    // Attack state machine
+    // -----------------------------------------------------------------
+    // Attack scheduling lives in two places:
+    //   • The CHARACTER owns the animation (idle → windup → active → recovery)
+    //     via createCharacter's `setState('attack')`. The animation curves
+    //     and the active window callback live inside the character.
+    //   • The CONTROLLER owns the "when can the user swing again" rule —
+    //     a simple cooldown countdown reset after each successful swing.
+    //
+    // The two stay in sync via `userData.getState() === 'attack'`. If the
+    // character is mid-swing OR the cooldown hasn't elapsed, tryAttack()
+    // is a no-op.
+    let attackCooldownTimer = 0;     // seconds remaining before next swing
+    // Snapshot of "was the character attacking last frame?" so we can arm
+    // the cooldown exactly on the swing-end transition instead of every frame.
+    let wasAttacking = false;
+    // Listeners for "swing started" and "active window fired" — the scene
+    // subscribes here to bridge events into Phaser's event bus.
+    const onAttackStartListeners = new Set();
+    const onAttackActiveListeners = new Set();
+
+    function isAttacking() {
+        return player.userData.getState() === 'attack';
+    }
+    function canAttack() {
+        return enabled && !isAttacking() && attackCooldownTimer <= 0;
+    }
+    function tryAttack() {
+        if (!canAttack()) {
+            return false;
+        }
+        // Lock movement from clobbering the swing — we allow walk/run to
+        // start again automatically after the swing via setSwingReturn.
+        player.userData.setState('attack');
+        // Restore the pre-swing state when the swing ends so the character
+        // continues whatever they were doing (walking while swinging, etc.).
+        const prevState = (() => {
+            // Re-derive from input state — read inside tryAttack for accuracy.
+            let fx = 0, fz = 0;
+            if (keys.has('KeyW') || keys.has('ArrowUp')) fz -= 1;
+            if (keys.has('KeyS') || keys.has('ArrowDown')) fz += 1;
+            if (keys.has('KeyA') || keys.has('ArrowLeft')) fx -= 1;
+            if (keys.has('KeyD') || keys.has('ArrowRight')) fx += 1;
+            const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
+            if (fx === 0 && fz === 0) return 'idle';
+            return running ? 'run' : 'walk';
+        })();
+        player.userData.setSwingReturn(prevState);
+        // Wire the active callback once — it forwards into the listener set.
+        player.userData.setOnAttackActive((evt) => {
+            for (const fn of onAttackActiveListeners) {
+                try {
+                    fn(evt, player);
+                } catch (err) {
+                    console.warn('[playerCtrl] attack-active listener threw:', err);
+                }
+            }
+        });
+        // Notify start listeners (scene-level event for Phaser bridge)
+        for (const fn of onAttackStartListeners) {
+            try {
+                fn(player);
+            } catch (err) {
+                console.warn('[playerCtrl] attack-start listener threw:', err);
+            }
+        }
+        return true;
+    }
+
     function onKeyDown(e) {
         if (!enabled) return;
         keys.add(e.code);
@@ -167,9 +246,32 @@ export default function createPlayerController(opts = {}) {
     }
     function onPointerDown(e) {
         if (!enabled) return;
-        // Left-drag orbits the camera around the player (yaw/pitch).
-        // Right-drag is reserved for OrbitControls pan (free-camera mode).
-        if (e.button !== 0) return;
+        // Action RPG input model:
+        //   • LMB (button 0)  → primary attack swing
+        //   • RMB (button 2)  → start camera-orbit drag (when held)
+        //   • Middle button   → reserved (no action)
+        //
+        // The toggleable `attackInputMode` swaps the two roles — see the GUI
+        // "Attack Input" picker. Default is "LMB" for ARPG convention.
+        const isLeft = e.button === 0;
+        const isRight = e.button === 2;
+        const attackButton = attackInputMode === 'LMB' ? 'left' : 'right';
+        const orbitButton = attackInputMode === 'LMB' ? 'right' : 'left';
+
+        if (isLeft && attackButton === 'left') {
+            tryAttack();
+            return;
+        }
+        if (isRight && attackButton === 'right') {
+            tryAttack();
+            return;
+        }
+        // Otherwise start a camera-orbit drag if it's the orbit button.
+        const wantOrbit =
+            (isLeft && orbitButton === 'left') ||
+            (isRight && orbitButton === 'right');
+        if (!wantOrbit) return;
+
         isDragging = true;
         lastPointerX = e.clientX;
         lastPointerY = e.clientY;
@@ -185,7 +287,11 @@ export default function createPlayerController(opts = {}) {
         camPitch = Math.max(0.1, Math.min(1.4, camPitch + dy * 0.005));
     }
     function onPointerUp(e) {
-        if (e.button !== 0) return;
+        const orbitButton = attackInputMode === 'LMB' ? 'right' : 'left';
+        const wantOrbit =
+            (e.button === 0 && orbitButton === 'left') ||
+            (e.button === 2 && orbitButton === 'right');
+        if (!wantOrbit) return;
         isDragging = false;
         domElement.style.cursor = 'default';
     }
@@ -195,7 +301,9 @@ export default function createPlayerController(opts = {}) {
         camDistance = Math.max(3.0, Math.min(15.0, camDistance + e.deltaY * 0.01));
     }
     function onContextMenu(e) {
-        // Suppress browser context menu on right-click within our canvas
+        // Suppress browser context menu on right-click within our canvas.
+        // RMB is used both for camera-orbit-drag and (in RMB-attack mode)
+        // for triggering an attack swing — the context menu would block both.
         if (domElement.contains(e.target)) e.preventDefault();
     }
 
@@ -251,6 +359,11 @@ export default function createPlayerController(opts = {}) {
     // -----------------------------------------------------------------
     function update(dt) {
         if (!enabled) return;
+        // Tick attack cooldown. Reset only on swing-end transition below.
+        if (attackCooldownTimer > 0) {
+            attackCooldownTimer = Math.max(0, attackCooldownTimer - dt);
+        }
+
         const { dir, speed, running } = readInput();
         const isMoving = dir.lengthSq() > 0.001;
 
@@ -266,6 +379,16 @@ export default function createPlayerController(opts = {}) {
         } else {
             player.userData.setState('idle');
         }
+
+        // End-of-swing latch: when the character leaves 'attack' state, arm
+        // the user-facing cooldown. setState('idle'/'walk'/'run') is a no-op
+        // while attacking, so the first setState after a swing ends will
+        // take effect AND we'll catch the transition right here.
+        const attackingNow = isAttacking();
+        if (wasAttacking && !attackingNow) {
+            attackCooldownTimer = tunables.attackCooldown;
+        }
+        wasAttacking = attackingNow;
 
         // Smoothly rotate player to face movement direction
         if (isMoving) {
@@ -394,6 +517,23 @@ export default function createPlayerController(opts = {}) {
         teleport,
         setFollowMode,
         isFollowMode,
+        // Attack API — external code (GUI, scene, future hitbox pass)
+        // interacts with the swing through this surface.
+        tryAttack,                         // attempt a swing; returns bool
+        isAttacking,                       // boolean accessor (method)
+        getAttackCooldown: () => attackCooldownTimer,
+        onAttackStart(fn) {                // subscribe to swing start
+            onAttackStartListeners.add(fn);
+            return () => onAttackStartListeners.delete(fn);
+        },
+        onAttackActive(fn) {               // subscribe to active window
+            onAttackActiveListeners.add(fn);
+            return () => onAttackActiveListeners.delete(fn);
+        },
+        setAttackInputMode(mode) {
+            attackInputMode = (mode === 'RMB') ? 'RMB' : 'LMB';
+        },
+        getAttackInputMode: () => attackInputMode,
         // Live-tunables: GUI sliders write directly to these fields.
         // Reading them lets callers (HUD, debug overlay) show current values.
         get moveSpeed() { return tunables.moveSpeed; },
@@ -413,6 +553,15 @@ export default function createPlayerController(opts = {}) {
         set cameraHeight(v) { tunables.cameraHeight = v; },
         get cameraSmoothing() { return tunables.cameraSmoothing; },
         set cameraSmoothing(v) { tunables.cameraSmoothing = v; },
+        get attackDuration() { return tunables.attackDuration; },
+        set attackDuration(v) {
+            tunables.attackDuration = v;
+            // Live-update character spec so the swing curve changes mid-game
+            const timing = player.userData.getAttackTiming();
+            timing.duration = v;
+        },
+        get attackCooldown() { return tunables.attackCooldown; },
+        set attackCooldown(v) { tunables.attackCooldown = v; },
         // Useful state accessors
         getPosition: () => player.position,
         getYaw: () => camYaw,

@@ -129,9 +129,10 @@ export class ThreeOverlayScene extends Phaser.Scene {
                     // -----------------------------------------------------------------
                     // Player Parameters GUI folder — top-level, sibling of Scene Setup.
                     // Tunes physics constants (walk/run speed, jump height, gravity,
-                    // camera distance/height/smoothing). NOTE: this folder is NOT
-                    // the keyboard shortcuts reference — those are documented in
-                    // the "Player Control" overlay panel in index.html.
+                    // camera distance/height/smoothing, attack duration/cooldown).
+                    // NOTE: this folder is NOT the keyboard shortcuts reference —
+                    // those are documented in the "Player Control" overlay panel
+                    // in index.html.
                     // -----------------------------------------------------------------
                     if (threeWorld.gui) {
                         const paramsFolder = threeWorld.gui.addFolder('Player Parameters');
@@ -143,6 +144,18 @@ export class ThreeOverlayScene extends Phaser.Scene {
                         paramsFolder.add(this._playerCtrl, 'cameraDistance', 3, 15, 0.2).name('Camera Distance');
                         paramsFolder.add(this._playerCtrl, 'cameraHeight', 1, 8, 0.1).name('Camera Height');
                         paramsFolder.add(this._playerCtrl, 'cameraSmoothing', 0, 12, 0.1).name('Camera Smoothing');
+
+                        // Attack controls — duration + cooldown both live-tunable
+                        const attackFolder = paramsFolder.addFolder('Attack');
+                        attackFolder.add(this._playerCtrl, 'attackDuration', 0.1, 1.5, 0.05).name('Swing Duration (s)');
+                        attackFolder.add(this._playerCtrl, 'attackCooldown', 0.0, 2.0, 0.05).name('Cooldown (s)');
+                        const attackBtn = { '⚔️ Trigger Swing Now': () => this._playerCtrl.tryAttack() };
+                        attackFolder.add(attackBtn, '⚔️ Trigger Swing Now');
+                        const attackModeState = { mode: this._playerCtrl.getAttackInputMode() };
+                        attackFolder.add(attackModeState, 'mode', ['LMB', 'RMB']).name('Attack Button').onChange(v => {
+                            this._playerCtrl.setAttackInputMode(v);
+                        });
+
                         const playerActions = {
                             '🎯 Snap to Player': () => this._playerCtrl.snapToPlayer(),
                             '🚫 Disable Input': () => this._playerCtrl.setEnabled(false),

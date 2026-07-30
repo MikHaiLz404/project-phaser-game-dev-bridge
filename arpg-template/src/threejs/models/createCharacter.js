@@ -4,10 +4,19 @@
  * Builds a stylised, low-poly humanoid suitable for an indie ARPG.
  * No external assets — every body part is a primitive mesh (BoxGeometry,
  * SphereGeometry, CylinderGeometry). The character exposes a small
- * animation API:
+ * The character exposes a small animation API:
  *
- *   • setState('idle' | 'walk' | 'run')  — drives procedural animation
- *   • update(dt)                          — call each frame to animate
+ *   • setState('idle' | 'walk' | 'run' | 'attack')  — drives procedural animation
+ *   • update(dt)                                     — call each frame to animate
+ *
+ * Attack animation: the right arm (armR) swings forward and down in an arc
+ * over `attackDuration` seconds. The 'active' window (mid-swing, when a
+ * hitbox would be live) is `attackActiveFraction` of the total. When the
+ * animation ends the state returns to 'idle' — caller is expected to set
+ * a new state ('walk'/'run'/etc.) on the next frame if needed.
+ *
+ * Future hook (Phase 4): a future aim pass can read `getState()` and
+ * trigger damage / hitbox during the active window.
  *
  * Body parts (all pivot at the root for easy placement):
  *   • body   (torso, box)
@@ -18,8 +27,10 @@
  * The character is ~1.6 units tall (y=0 ground), so it fits cleanly into
  * a 50-unit ground plane and reads well from a third-person camera.
  *
- * @param {object} spec — { skinColor, shirtColor, pantsColor, hairColor, scale }
- * @returns {THREE.Group} — root group with userData: { setState, update, parts }
+ * @param {object} spec — { skinColor, shirtColor, pantsColor, hairColor,
+ *                         scale, attackDuration }
+ * @returns {THREE.Group} — root group with userData: { setState, update, parts,
+ *                         onAttackActive, getAttackTiming }
  */
 
 import * as THREE from 'three';
@@ -35,6 +46,13 @@ export default function createCharacter(spec = {}) {
     const shoes = spec.shoesColor ?? 0x2a1a0a;
 
     const scale = spec.scale ?? 1.0;
+    const attackDuration = spec.attackDuration ?? 0.45;   // seconds, full swing
+    const attackActiveFraction = 0.35;                    // 35% of swing = active window
+    // Position where a melee hitbox would live — relative to root.
+    // The active window fires when armR crosses y=0 axis at this x/z offset.
+    // Forward = +Z (matches Three.js default forward); character faces +Z too,
+    // so the hit origin sits in front of the body.
+    const attackHitOffset = { x: 0, y: 1.0, z: 0.5 };
 
     // -----------------------------------------------------------------
     // Materials
@@ -133,11 +151,32 @@ export default function createCharacter(spec = {}) {
     let state = 'idle';
     let animTime = 0;
     let bobAmount = 0;  // vertical head bob
+    // Listeners for the "active" window of an attack swing — fired once per
+    // swing when the arm crosses the hit plane. Hitbox code (Phase 4)
+    // subscribes to this to spawn damage / events. The active callback is
+    // intentionally nullable so character keeps working without one.
+    let onAttackActive = null;
+    let attackActiveFired = false;        // latched true until the swing ends
+    let swingReturnTo = 'idle';           // where to go after swing completes
 
     function setState(next) {
         if (next === state) return;
+        // Leaving an attack mid-swing back to idle is fine; entering attack
+        // cancels anything else (including another attack in flight) — the
+        // player controller's cooldown handles the user-facing lockout.
+        if (state === 'attack') {
+            attackActiveFired = false;
+        }
         state = next;
         animTime = 0;
+    }
+
+    /**
+     * Schedule a one-shot state change for when the current attack ends.
+     * Lets you chain ("attack" → "walk") without polling each frame.
+     */
+    function setSwingReturn(nextState) {
+        swingReturnTo = nextState || 'idle';
     }
 
     function update(dt) {
@@ -172,6 +211,76 @@ export default function createCharacter(spec = {}) {
             armR.rotation.x = swing * 0.8;
             bobAmount = Math.abs(Math.sin(animTime * 12)) * 0.07;
             torso.scale.set(1, 1, 1);
+        } else if (state === 'attack') {
+            // Swing arc over attackDuration seconds. Right arm (armR) sweeps
+            // from raised ("windup" — first 35%) through "active" (middle 30%,
+            // hits here) into "recovery" (last 35%, returns to rest).
+            //
+            // Curve: half-cosine. At t=0 → cos(0)=1 → arm raised fully back.
+            // At t=0.5 → cos(π)=−1 → arm forward at full extension.
+            // At t=1 → cos(2π)=1 → arm back to rest.
+            const t = Math.min(1, animTime / attackDuration);
+
+            // Rotation on armR.x drives the swing.
+            // windup   (0..0.35) — arm lifts back to −1.2 rad
+            // active   (0.35..0.65) — arm swings forward to +1.6 rad
+            // recovery (0.65..1.0) — arm returns to ~0
+            let swingX = 0;
+            if (t < 0.35) {
+                // Windup: lerp from 0 → −1.2 rad (arm raised behind body)
+                const w = t / 0.35;
+                swingX = -1.2 * w;
+            } else if (t < 0.65) {
+                // Active: lerp from −1.2 → +1.6 rad (arm sweeps forward)
+                const w = (t - 0.35) / 0.30;
+                swingX = -1.2 + (1.6 - -1.2) * w;
+            } else {
+                // Recovery: lerp from +1.6 → 0 (arm back to neutral)
+                const w = (t - 0.65) / 0.35;
+                swingX = 1.6 * (1 - w);
+            }
+            armR.rotation.x = swingX;
+
+            // Left arm tenses during active window for visual weight
+            const tense = Math.max(0, 1 - Math.abs(t - 0.5) / 0.25) * 0.6;
+            armL.rotation.x = -0.4 - tense * 0.4;
+
+            // Torso twist — small lean into the swing at the active midpoint
+            const lean = Math.sin(t * Math.PI) * 0.15;
+            torso.rotation.y = lean;
+
+            // Slight forward step during active — legs push player weight
+            const legPush = Math.sin(t * Math.PI) * 0.2;
+            legL.rotation.x = -legPush;
+            legR.rotation.x = legPush;
+
+            // Bob stays zero — anchored stance during attack
+            bobAmount = 0;
+
+            // Fire the active-window callback exactly once per swing when
+            // t crosses attackActiveFraction (middle of the curve).
+            if (!attackActiveFired && t >= attackActiveFraction) {
+                attackActiveFired = true;
+                if (typeof onAttackActive === 'function') {
+                    try {
+                        onAttackActive({
+                            origin: attackHitOffset,
+                            t,
+                            facingYaw: 0, // root group rotation = facingYaw externally
+                        });
+                    } catch (err) {
+                        // Defensive: never let listener bugs kill the animation
+                        console.warn('[createCharacter] onAttackActive listener threw:', err);
+                    }
+                }
+            }
+
+            // Swing complete — hand back to caller-chosen return state
+            if (t >= 1) {
+                state = swingReturnTo;
+                animTime = 0;
+                attackActiveFired = false;
+            }
         }
         // Apply bob to head/hair/torso (skip legs — they touch ground)
         const baseY = {
@@ -190,9 +299,24 @@ export default function createCharacter(spec = {}) {
 
     root.userData = {
         setState,
+        setSwingReturn,
         update,
         getState: () => state,
         parts: { torso, head, hairCap, armL, armR, legL, legR, shoeL, shoeR },
+        // Attack metadata — exposed for hitbox / Phase 4 subscribers
+        attack: {
+            duration: attackDuration,
+            activeFraction: attackActiveFraction,
+            hitOffset: attackHitOffset,
+        },
+        setOnAttackActive(cb) { onAttackActive = cb; },
+        getAttackTiming: () => ({
+            duration: attackDuration,
+            activeFraction: attackActiveFraction,
+            hitOffset: attackHitOffset,
+            state,
+            animTime,
+        }),
         // Useful metadata for game logic (height, ground offset)
         height: 1.55 * scale,
         groundY: 0,
