@@ -14,7 +14,7 @@ const config = {
     width: 960,
     height: 540,
     pixelArt: false,
-    transparent: true,         // let #three-canvas show through where Phaser is empty
+    transparent: false,         // LAYER 3: opaque so sprites render visibly (test Phaser layer first)
     physics: {
         default: 'arcade',
         arcade: {

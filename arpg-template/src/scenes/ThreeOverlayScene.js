@@ -20,9 +20,13 @@
  */
 
 import Phaser from 'phaser';
+import * as THREE from 'three';
 import { threeWorld } from '../threejs/ThreeWorld.js';
 import { loadModel } from '../threejs/ModelLoader.js';
 import { ThreeBridge } from '../threejs/ThreeBridge.js';
+import createAsianVillage from '../threejs/models/createAsianVillage.js';
+import createPlayerController from '../threejs/models/createPlayerController.js';
+import createNPCs from '../threejs/models/createNPCs.js';
 
 const SCENE_KEY = 'ThreeOverlayScene';
 
@@ -35,7 +39,7 @@ export class ThreeOverlayScene extends Phaser.Scene {
 
     init(data) {
         // data.modelUrl — optional, load on boot
-        this._bootModelUrl = data?.modelUrl ?? '/models/createDemoPropModel.js';
+        this._bootModelUrl = data?.modelUrl ?? null;
         this._bootSpec = data?.spec ?? null;
     }
 
@@ -59,15 +63,112 @@ export class ThreeOverlayScene extends Phaser.Scene {
             this.events.emit('model-load-fail', { url, error: error?.message ?? String(error) });
         });
 
-        // Boot the placeholder/requested model. The placeholder proves the
-        // pipeline works even before any real img2threejs output exists.
-        loadModel(this._bootModelUrl, this._bootSpec ?? {}, { addToWorld: true })
-            .then((group) => {
-                console.info('[ThreeOverlayScene] boot model ready:', group.name);
-            })
-            .catch((err) => {
-                console.warn('[ThreeOverlayScene] boot model failed (continuing):', err?.message);
-            });
+        // Phase 1 POC: use the statically-imported demo factory directly.
+        // The dynamic-URL path is kept intact for future img2threejs drops.
+        if (this._bootModelUrl) {
+            loadModel(this._bootModelUrl, this._bootSpec ?? {}, { addToWorld: true })
+                .then((group) => {
+                    console.info('[ThreeOverlayScene] boot model ready:', group.name);
+                })
+                .catch((err) => {
+                    console.warn('[ThreeOverlayScene] boot model failed (continuing):', err?.message);
+                });
+        } else {
+            // Inline default — bypasses ModelLoader's dynamic-import entirely
+            // and proves the 3D layer is alive even when the URL route is broken.
+            try {
+                const group = createAsianVillage(this._bootSpec ?? {}, { addToWorld: true });
+                group.scale.set(1, 1, 1);
+                group.position.set(0, 0, 0);
+                // Enable shadow casting on every mesh of the village
+                group.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                    }
+                });
+                threeWorld.add(group);
+                // Attach the house-layout GUI tool after the village is in the world
+                if (threeWorld.gui) {
+                    import('../threejs/models/createHouseLayoutTool.js').then(({ attachHouseLayoutTool }) => {
+                        attachHouseLayoutTool(threeWorld.gui, threeWorld, group);
+                    }).catch((err) => {
+                        console.warn('[ThreeOverlayScene] house-layout tool attach failed:', err?.message);
+                    });
+                }
+                console.info('[ThreeOverlayScene] inline asian village added:', group.name);
+
+                // -----------------------------------------------------------------
+                // Spawn ambient NPCs that wander the village
+                // -----------------------------------------------------------------
+                try {
+                    this._npcs = createNPCs({
+                        scene: threeWorld.scene,
+                        count: 5,
+                        bounds: { minX: -22, maxX: 22, minZ: -22, maxZ: 22 },
+                        walkSpeed: 1.8,
+                    });
+                    console.info('[ThreeOverlayScene] NPCs spawned:', this._npcs.npcs.length);
+                } catch (err) {
+                    console.warn('[ThreeOverlayScene] NPC spawn failed:', err?.message);
+                }
+
+                // -----------------------------------------------------------------
+                // Player + third-person camera controller
+                // -----------------------------------------------------------------
+                try {
+                    const threeCanvas = document.getElementById('three-canvas');
+                    this._playerCtrl = createPlayerController({
+                        camera: threeWorld.camera,
+                        domElement: threeCanvas,
+                        scene: threeWorld.scene,
+                        controls: threeWorld.controls,
+                        spawnPosition: { x: 0, z: -12 },
+                    });
+                    console.info('[ThreeOverlayScene] player + third-person camera ready');
+
+                    // -----------------------------------------------------------------
+                    // Player Parameters GUI folder — top-level, sibling of Scene Setup.
+                    // Tunes physics constants (walk/run speed, jump height, gravity,
+                    // camera distance/height/smoothing). NOTE: this folder is NOT
+                    // the keyboard shortcuts reference — those are documented in
+                    // the "Player Control" overlay panel in index.html.
+                    // -----------------------------------------------------------------
+                    if (threeWorld.gui) {
+                        const paramsFolder = threeWorld.gui.addFolder('Player Parameters');
+                        paramsFolder.close();
+                        paramsFolder.add(this._playerCtrl, 'moveSpeed', 1, 12, 0.1).name('Walk Speed');
+                        paramsFolder.add(this._playerCtrl, 'runMultiplier', 1, 3, 0.05).name('Run Multiplier');
+                        paramsFolder.add(this._playerCtrl, 'jumpVelocity', 2, 12, 0.1).name('Jump Height');
+                        paramsFolder.add(this._playerCtrl, 'gravity', 5, 40, 0.5).name('Gravity');
+                        paramsFolder.add(this._playerCtrl, 'cameraDistance', 3, 15, 0.2).name('Camera Distance');
+                        paramsFolder.add(this._playerCtrl, 'cameraHeight', 1, 8, 0.1).name('Camera Height');
+                        paramsFolder.add(this._playerCtrl, 'cameraSmoothing', 0, 12, 0.1).name('Camera Smoothing');
+                        const playerActions = {
+                            '🎯 Snap to Player': () => this._playerCtrl.snapToPlayer(),
+                            '🚫 Disable Input': () => this._playerCtrl.setEnabled(false),
+                            '✅ Enable Input': () => this._playerCtrl.setEnabled(true),
+                            '📍 Teleport (0,-12)': () => this._playerCtrl.teleport(0, -12),
+                        };
+                        // Follow Mode checkbox — toggle between follow-camera (default)
+                        // and free-camera (OrbitControls takes over).
+                        const followState = { enabled: this._playerCtrl.isFollowMode() };
+                        const followCtrl = paramsFolder.add(followState, 'enabled').name('🔗 Follow Mode');
+                        followCtrl.onChange(v => {
+                            this._playerCtrl.setFollowMode(v);
+                        });
+                        paramsFolder.add(playerActions, '🎯 Snap to Player');
+                        paramsFolder.add(playerActions, '🚫 Disable Input');
+                        paramsFolder.add(playerActions, '✅ Enable Input');
+                        paramsFolder.add(playerActions, '📍 Teleport (0,-12)');
+                        console.info('[ThreeOverlayScene] player parameters GUI attached');
+                    }
+                } catch (err) {
+                    console.warn('[ThreeOverlayScene] player controller failed:', err?.message);
+                }
+            } catch (err) {
+                console.warn('[ThreeOverlayScene] inline asian village failed:', err?.message);
+            }
+        }
 
         // Auto-shutdown: dispose ThreeWorld when this scene is stopped.
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, this._onShutdown, this);
@@ -83,5 +184,10 @@ export class ThreeOverlayScene extends Phaser.Scene {
     update(time, delta) {
         // Phaser passes delta in milliseconds. ThreeWorld converts to seconds.
         threeWorld.update(delta);
+
+        // Player + NPC controllers run in seconds (delta is ms → sec)
+        const dtSec = delta * 0.001;
+        if (this._npcs) this._npcs.update(dtSec);
+        if (this._playerCtrl) this._playerCtrl.update(dtSec);
     }
 }

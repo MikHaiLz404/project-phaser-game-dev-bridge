@@ -16,6 +16,8 @@
  */
 
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import GUI from 'lil-gui';
 
 export class ThreeWorld {
     constructor() {
@@ -28,22 +30,73 @@ export class ThreeWorld {
         /** @type {THREE.Group} */
         this.root = new THREE.Group();
         this.scene.add(this.root);
+        /** @type {OrbitControls|null} */
+        this.controls = null;
+        /** @type {{ ambient: THREE.AmbientLight, sun: THREE.DirectionalLight, fill: THREE.DirectionalLight, rim: THREE.DirectionalLight, point: THREE.PointLight } | null} */
+        this.lights = null;
+        /** @type {GUI|null} */
+        this.gui = null;
 
-        // Default ambient + hemisphere fill — cheap, prevents black silhouettes
-        // before any directional lights are added.
-        this.scene.background = new THREE.Color(0x101024);
-        const hemi = new THREE.HemisphereLight(0xffffff, 0x202040, 0.6);
-        this.scene.add(hemi);
+        // Layer 1: Background (deep navy blue)
+        this.scene.background = new THREE.Color(0x1a3a8a);
 
-        // Directional "sun" — tuned for game-prop lighting (45° elevation).
-        const sun = new THREE.DirectionalLight(0xffeec0, 1.1);
-        sun.position.set(4, 6, 3);
+        // Layer 1: Lighting — improved 3-point rig with warm key + cool fill + rim
+        // Soft ambient so shadows aren't pitch-black
+        const ambient = new THREE.AmbientLight(0xffffff, 0.35);
+        this.scene.add(ambient);
+
+        // Key light — warm sun, casts shadows
+        const sun = new THREE.DirectionalLight(0xffeec8, 1.6);
+        sun.position.set(8, 12, 6);
+        sun.castShadow = true;
+        sun.shadow.mapSize.set(2048, 2048);
+        sun.shadow.camera.near = 0.1;
+        sun.shadow.camera.far = 50;
+        sun.shadow.camera.left = -20;
+        sun.shadow.camera.right = 20;
+        sun.shadow.camera.top = 20;
+        sun.shadow.camera.bottom = -20;
+        sun.shadow.bias = -0.001;
         this.scene.add(sun);
 
-        // Soft backlight to separate objects from background.
-        const back = new THREE.DirectionalLight(0x88aaff, 0.3);
-        back.position.set(-3, 2, -4);
-        this.scene.add(back);
+        // Fill light — cool blue from opposite side (softens shadows)
+        const fill = new THREE.DirectionalLight(0x88aaff, 0.5);
+        fill.position.set(-5, 3, -2);
+        this.scene.add(fill);
+
+        // Rim light — bright cool backlight to separate objects from background
+        const rim = new THREE.DirectionalLight(0xccddff, 0.7);
+        rim.position.set(0, 4, -8);
+        this.scene.add(rim);
+
+        // Studio lighting: 3-point rig (key + fill + rim) + hemisphere for daytime.
+        // No point lights — those are for game-world mood, not a controlled product showcase.
+
+        // Hemisphere — sky/ground tinting for a bright daytime outdoor feel.
+        const hemi = new THREE.HemisphereLight(0xb8d8ff, 0x4a3a2a, 0.6);
+        this.scene.add(hemi);
+
+        this.lights = { ambient, sun, fill, rim, hemi };
+
+        // Enable shadow rendering will happen after WebGLRenderer is created in boot()
+
+        // Layer 2: Ground plane — sits at y = -1, receives shadows
+        const groundGeo = new THREE.PlaneGeometry(50, 50);
+        const groundMat = new THREE.MeshStandardMaterial({
+            color: 0x2a2a3a,
+            roughness: 0.9,
+            metalness: 0.1,
+        });
+        this.ground = new THREE.Mesh(groundGeo, groundMat);
+        this.ground.rotation.x = -Math.PI / 2;
+        this.ground.position.y = -1;
+        this.ground.receiveShadow = true;
+        this.scene.add(this.ground);
+
+        // Layer 2: Grid helper — 10x10 cells for spatial reference
+        this.grid = new THREE.GridHelper(50, 25, 0x4a5a8a, 0x2a3a6a);
+        this.grid.position.y = -0.99;
+        this.scene.add(this.grid);
 
         this._running = false;
         this._disposed = false;
@@ -65,17 +118,82 @@ export class ThreeWorld {
             antialias: true,
             alpha: true,
             powerPreference: 'high-performance',
+            preserveDrawingBuffer: true,  // Phase 1: keep buffer for debugging visibility
         });
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
         this.renderer.toneMappingExposure = 1.0;
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
         this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-        this.camera.position.set(0, 1.2, 4);
-        this.camera.lookAt(0, 0, 0);
+        // Pulled back to fit the village cluster (houses span ±18, road cross ±15)
+        this.camera.position.set(20, 12, 32);
+        this.camera.lookAt(0, 0.5, 0);
+
+        // Layer 5: OrbitControls — mouse drag rotates, scroll zooms, right-drag pans
+        this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+        this.controls.enableDamping = true;
+        this.controls.dampingFactor = 0.05;
+        this.controls.target.set(0, 0, 0);
+        this.controls.minDistance = 2;
+        this.controls.maxDistance = 60;
+        this.controls.maxPolarAngle = Math.PI * 0.49; // prevent going below ground
+        // enableRotate is disabled — player controller handles orbit in follow mode.
+        // enablePan stays ON so Right-Drag pan works regardless of follow mode.
+        this.controls.enableRotate = false;
+        this.controls.enablePan = true;
 
         this._resize();
         window.addEventListener('resize', this._resize);
+
+        // lil-gui panel — root panel hosts the top-level tool folders
+        // (Scene Setup, Player Control, House Layout). Individual folders
+        // declare their own scope so the root title stays neutral.
+        this.gui = new GUI({ title: 'Asian Village POC' });
+        this.gui.domElement.style.position = 'fixed';
+        this.gui.domElement.style.top = '12px';
+        this.gui.domElement.style.left = '12px';
+        this.gui.domElement.style.zIndex = '110';
+        this.gui.domElement.style.opacity = '0.95';
+
+        const lighting = {
+            ambient: 0.6,
+            key: 1.6,
+            keyX: 6,
+            keyY: 10,
+            keyZ: 5,
+            fill: 0.6,
+            rim: 0.7,
+            hemi: 0.6,
+            exposure: 1.1,
+            shadow: true,
+        };
+
+        // Master folder — Scene Setup (lighting + camera defaults + render)
+        // Renamed from "Scene Lights" so future Scene-Setup concerns
+        // (camera defaults, render options, post-processing) belong here.
+        const setupFolder = this.gui.addFolder('Scene Setup');
+        setupFolder.close();
+
+        setupFolder.add(lighting, 'ambient', 0, 2, 0.01).name('Ambient').onChange(v => { if (this.lights) this.lights.ambient.intensity = v; });
+        // Key Light — intensity + position (angle control)
+        const keyFolder = setupFolder.addFolder('Key Light');
+        keyFolder.add(lighting, 'key', 0, 3, 0.01).name('Intensity').onChange(v => { if (this.lights) this.lights.sun.intensity = v; });
+        keyFolder.add(lighting, 'keyX', -10, 10, 0.1).name('Position X').onChange(v => { if (this.lights) this.lights.sun.position.x = v; });
+        keyFolder.add(lighting, 'keyY', 0.5, 15, 0.1).name('Position Y').onChange(v => { if (this.lights) this.lights.sun.position.y = v; });
+        keyFolder.add(lighting, 'keyZ', -10, 10, 0.1).name('Position Z').onChange(v => { if (this.lights) this.lights.sun.position.z = v; });
+
+        setupFolder.add(lighting, 'fill', 0, 2, 0.01).name('Fill Light').onChange(v => { if (this.lights) this.lights.fill.intensity = v; });
+        setupFolder.add(lighting, 'rim', 0, 2, 0.01).name('Rim Light').onChange(v => { if (this.lights) this.lights.rim.intensity = v; });
+        setupFolder.add(lighting, 'hemi', 0, 2, 0.01).name('Hemisphere').onChange(v => { if (this.lights?.hemi) this.lights.hemi.intensity = v; });
+        setupFolder.add(lighting, 'exposure', 0.2, 2.0, 0.01).name('Exposure').onChange(v => { if (this.renderer) this.renderer.toneMappingExposure = v; });
+        setupFolder.add(lighting, 'shadow').name('Shadows').onChange(v => { if (this.renderer) this.renderer.shadowMap.enabled = v; });
+
+        // sync actual light positions to UI defaults
+        if (this.lights) {
+            this.lights.sun.position.set(lighting.keyX, lighting.keyY, lighting.keyZ);
+        }
 
         this._running = true;
         console.info('[ThreeWorld] booted — canvas:', canvas.width, 'x', canvas.height);
@@ -108,6 +226,9 @@ export class ThreeWorld {
             // models are loaded.
             this._addDemoCube();
         }
+
+        // Layer 5: update OrbitControls damping
+        if (this.controls) this.controls.update();
 
         this.renderer.render(this.scene, this.camera);
     }
@@ -148,6 +269,16 @@ export class ThreeWorld {
         if (this._disposed) return;
         this._running = false;
         window.removeEventListener('resize', this._resize);
+
+        if (this.controls) {
+            this.controls.dispose();
+            this.controls = null;
+        }
+
+        if (this.gui) {
+            this.gui.destroy();
+            this.gui = null;
+        }
 
         if (this.renderer) {
             this.renderer.dispose();

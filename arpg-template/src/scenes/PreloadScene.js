@@ -16,8 +16,8 @@ export class PreloadScene extends Phaser.Scene {
     }
 
     create() {
-        // Route to CombatTest scene (default for POC testing)
-        // Switch to 'Game' when combat integration is complete
+        // Phase 1: Boot Three.js 3D background layer first, then route to CombatTest
+        this.scene.launch('ThreeOverlayScene', {});
         this.scene.start('CombatTest');
     }
 }
