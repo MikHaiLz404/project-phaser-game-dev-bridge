@@ -53,6 +53,7 @@ export default function createNPCs(opts = {}) {
             hairColor: pickFrom([0x3a2a1a, 0x2a1a0a, 0x4a3a1a, 0x1a0a05]),
             shoesColor: 0x2a1a0a,
             scale: 0.9 + Math.random() * 0.15,
+            equipSword: false,  // villagers don't carry swords
         });
         // Ground plane is at y=-1; place NPC feet there.
         const initialX = rand(bounds.minX, bounds.maxX);

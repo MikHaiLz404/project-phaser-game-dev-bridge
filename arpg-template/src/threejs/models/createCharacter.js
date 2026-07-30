@@ -106,7 +106,19 @@ export default function createCharacter(spec = {}) {
 
     const armR = new THREE.Group();
     armR.name = 'armR';
-    armR.position.set(0.32, 1.1, 0);
+    // The dominant in-game camera (ThreeWorld.js) looks from +Z toward -Z,
+    // so the player appears with their BACK to the viewer by default (spawn
+    // at world z=-12, camera at world z=+32). In that orientation, the
+    // viewer's RIGHT side maps to the character's LEFT side — meaning a
+    // sword on character-local +X arm appears on the viewer's LEFT, which
+    // reads as "they're holding it backwards".
+    //
+    // Conventional third-person ARPG UX favors having the sword on the
+    // viewer's right (so it's not culled by the player body silhouette).
+    // We mirror the arm positions: armR is at character-local -X (left
+    // side of the body) but visually presents on the viewer's RIGHT due
+    // to the default camera orientation.
+    armR.position.set(-0.32, 1.1, 0);
     const armRMesh = new THREE.Mesh(armGeom, matShirt);
     armRMesh.position.y = -0.275;
     armRMesh.castShadow = true;
@@ -182,61 +194,80 @@ export default function createCharacter(spec = {}) {
     const matBlade = new THREE.MeshStandardMaterial({ color: 0xdde7f0, roughness: 0.2, metalness: 0.9 });  // polished steel
     const matPommel = new THREE.MeshStandardMaterial({ color: 0xc8b878, roughness: 0.4, metalness: 0.6 });
 
-    // swordPivot — put it on the ROOT instead of armR so its world rotation
-    // stays free of the arm's swing rotation. We'll sync its WORLD position
-    // to the right wrist every frame in update().
+    // -----------------------------------------------------------------
+    // Right-hand weapon — sword
     //
-    // Why: attaching to armR meant the sword's orientation swung wildly with
-    // the arm (e.g., at rotation.x = -2.6 the local +Y axis flipped past
-    // the body — visually the sword pointed DOWNWARD instead of upward).
-    // Counter-rotating the pivot each frame is fragile and order-dependent;
-    // keeping it on root + tracking position is simpler and more readable.
+    // Visibility flag: spec.equipSword (default true when omitted) builds
+    // the sword meshes. Set to false to skip — useful for NPCs that
+    // shouldn't be visibly carrying a sword.
+    //
+    // We still ALWAYS create the empty swordPivot group on root (so the
+    // player-controller wrist-tracking code can find it without checking
+    // for null) — just skip the meshes inside.
+    const equipSword = spec.equipSword !== false;
+
+    // swordPivot — see the big comment block earlier for why this lives
+    // on root and not on armR.
     const swordPivot = new THREE.Group();
     swordPivot.name = 'swordPivot';
     root.add(swordPivot);
 
-    const sword = new THREE.Group();
-    sword.name = 'sword';
+    // Sword mesh group — null when equipSword is false (NPCs).
+    let sword = null;
+    if (equipSword) {
+        sword = new THREE.Group();
+        sword.name = 'sword';
+    }
 
-    // World-space sword layout — blade always points along world +Y so the
-    // sword reads as "held vertically" regardless of how the player is
-    // posed. Both idle and attack swings use this stable orientation; the
-    // visual difference comes from where the sword IS (wrist tracking) and
-    // the player's whole-body posture, not from a rotating blade.
-    //
-    //   pommel (lowest, in the palm-side) — y=-0.10
-    //   grip   (cylinder)              — y=0.00 (centered)
-    //   guard  (cross-piece)           — y=+0.10
-    //   blade  (long box, upward)      — y=+0.40 (center)
-    //   tip    (cone at far end)       — y=+0.75
-    const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), matPommel);
-    pommel.position.set(0, -0.10, 0);
-    pommel.castShadow = true;
-    sword.add(pommel);
+    if (equipSword) {
+        // World-space sword layout — blade points along local +Z (forward).
+        // In the rest pose (arm hanging at the side) this means the sword is
+        // held out in front of the player at hip/chest height, tip pointing
+        // away from the body — the natural relaxed grip of an ARPG character
+        // who has their weapon drawn but isn't actively swinging.
+        //
+        //   hilt   (cylinder)   — z=-0.10  (in the hand)
+        //   guard  (cross-piece) — z=+0.00
+        //   blade  (long box)    — z=+0.30  (extending forward)
+        //   tip    (cone)        — z=+0.65
+        //   pommel (ball)        — z=-0.18  (behind the grip)
+        //
+        // Note: in Worldspace, +Z = forward when the player faces away from the
+        // camera (character's local +Z); if the player rotates 180°, the local
+        // rotation.y update we apply below keeps the blade pointing in the new
+        // forward direction automatically.
+        const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), matPommel);
+        pommel.position.set(0, 0, -0.18);
+        pommel.castShadow = true;
+        sword.add(pommel);
 
-    const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.20, 8), matHilt);
-    hilt.position.set(0, 0.00, 0);
-    hilt.castShadow = true;
-    sword.add(hilt);
+        const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.20, 8), matHilt);
+        hilt.rotation.x = Math.PI / 2;  // rotate cylinder so length axis = Z
+        hilt.position.set(0, 0, -0.10);
+        hilt.castShadow = true;
+        sword.add(hilt);
 
-    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.10), matGuard);
-    guard.position.set(0, 0.13, 0);
-    guard.castShadow = true;
-    sword.add(guard);
+        const guard = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.04, 0.18), matGuard);
+        guard.position.set(0, 0, 0.00);
+        guard.castShadow = true;
+        sword.add(guard);
 
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.55, 0.02), matBlade);
-    blade.position.set(0, 0.45, 0);  // blade center at y=0.45, extends 0.20 below and 0.35 above
-    blade.castShadow = true;
-    sword.add(blade);
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.55, 0.05), matBlade);
+        blade.position.set(0, 0, 0.30);  // blade center at z=0.30
+        blade.castShadow = true;
+        sword.add(blade);
 
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.10, 4), matBlade);
-    tip.position.set(0, 0.78, 0);
-    tip.castShadow = true;
-    sword.add(tip);
+        const tip = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.10, 4), matBlade);
+        tip.rotation.x = -Math.PI / 2;  // cone default +Y → rotate to +Z
+        tip.position.set(0, 0, 0.63);
+        tip.castShadow = true;
+        sword.add(tip);
 
-    swordPivot.add(sword);
+        swordPivot.add(sword);
+    }
 
-    // Reusable vector to avoid per-frame allocation
+    // Reusable vector (always declared — wrist tracking uses it regardless
+    // of whether the sword meshes exist).
     const swordTrack = new THREE.Vector3();
 
     // -----------------------------------------------------------------
@@ -429,35 +460,33 @@ export default function createCharacter(spec = {}) {
         armR.position.y = baseY.armR + bobAmount;
 
         // -----------------------------------------------------------------
-        // Track the right wrist so the swordPivot (child of root) follows
-        // wherever armR ends up. The pivot lives on root, so its `.position`
-        // is in root-LOCAL space — we must NOT use armR.matrixWorld (that
-        // includes the player's world transform and would pin the pivot
-        // at the wrist's absolute coordinates, swinging it across the world
-        // every frame the player moves). Instead:
+        // Track the right wrist so the swordPivot follows wherever armR ends
+        // up while the player swings.
         //
-        //   localWrist = armR.matrix * (0, -0.55, 0)
+        // swordPivot lives on root, so its position is in ROOT-LOCAL space.
+        // We transform the wrist local position (0,-0.55,0 in armR space)
+        // through armR.matrixWorld, then undo root's transform via
+        // root.matrixWorld.invert() to get back into root-local coordinates.
         //
-        // gives us the wrist coordinates in root's frame — that's exactly
-        // what swordPivot.position wants.
+        // Critical: the player's facing rotation (root.rotation.y = facingYaw)
+        // is applied to the pivot INTERNALLY because it's a child of root.
+        // So if the player turns 180° the pivot's transform auto-orients with
+        // them — the blade still points in the new forward direction.
         //
-        // swordPivot stays at identity rotation in world space (no tilt /
-        // swing inheritance from armR), so the blade always points along
-        // world +Y — the visual angle of the sword doesn't change when the
-        // player swings. The motion comes from the WRIST ARC, which is what
-        // you want for an "overhead slash" cue.
-        //
-        // We must call root.updateMatrix() explicitly to make sure the chain
-        // root → armR.matrix is fresh before sampling — Three.js updates
-        // matrices during render, but our update() runs before render.
+        // Two stage update:
+        //   1) root.updateMatrixWorld() to push the parent's world matrix
+        //      through the chain so armR.matrixWorld is fresh
+        //   2) invert root.matrixWorld so we can convert wrist back to local
         // -----------------------------------------------------------------
-        root.updateMatrix();
-        root.updateMatrixWorld(true);  // parent-to-child chain
+        root.updateMatrixWorld(true);   // parent-to-child chain
         swordTrack.set(0, -0.55, 0).applyMatrix4(armR.matrixWorld);
         // Convert world → root-local by undoing root.matrixWorld
-        const rootInv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+        const rootInv = root.matrixWorld.clone().invert();
         swordTrack.applyMatrix4(rootInv);
         swordPivot.position.copy(swordTrack);
+        // Keep pivot rotation zero so it inherits root's facing rotation
+        // purely from the parent chain (no fighting the inheritance).
+        swordPivot.rotation.set(0, 0, 0);
     }
 
     root.userData = {
