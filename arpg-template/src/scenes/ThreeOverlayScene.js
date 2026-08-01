@@ -27,6 +27,9 @@ import { ThreeBridge } from '../threejs/ThreeBridge.js';
 import createAsianVillage from '../threejs/models/createAsianVillage.js';
 import createPlayerController from '../threejs/models/createPlayerController.js';
 import createNPCs from '../threejs/models/createNPCs.js';
+import createForest from '../threejs/models/createForest.js';
+import createWildlife from '../threejs/models/createWildlife.js';
+import createGoblins from '../threejs/models/createGoblin.js';
 
 const SCENE_KEY = 'ThreeOverlayScene';
 
@@ -178,6 +181,39 @@ export class ThreeOverlayScene extends Phaser.Scene {
                 } catch (err) {
                     console.warn('[ThreeOverlayScene] player controller failed:', err?.message);
                 }
+
+                // -----------------------------------------------------------------
+                // Forest zone (north of village) + wildlife + goblins
+                // -----------------------------------------------------------------
+                try {
+                    const forestGroup = createForest({}, { addToWorld: false });
+                    forestGroup.traverse((child) => {
+                        if (child.isMesh) child.castShadow = true;
+                    });
+                    threeWorld.add(forestGroup);
+                    console.info('[ThreeOverlayScene] forest added:', forestGroup.name);
+
+                    // Live player ref for wildlife/goblin chase behaviour
+                    const playerRef = { position: this._playerCtrl?.player?.position ?? null };
+
+                    this._wildlife = createWildlife({
+                        scene: threeWorld.scene,
+                        count: 8,
+                        bounds: { minX: -20, maxX: 20, minZ: -32, maxZ: -62 },
+                        playerRef,
+                    });
+                    console.info('[ThreeOverlayScene] wildlife spawned:', this._wildlife.animals.length);
+
+                    this._goblins = createGoblins({
+                        scene: threeWorld.scene,
+                        count: 4,
+                        bounds: { minX: -18, maxX: 18, minZ: -34, maxZ: -60 },
+                        playerRef,
+                    });
+                    console.info('[ThreeOverlayScene] goblins spawned:', this._goblins.goblins.length);
+                } catch (err) {
+                    console.warn('[ThreeOverlayScene] forest/wildlife/goblins failed:', err?.message);
+                }
             } catch (err) {
                 console.warn('[ThreeOverlayScene] inline asian village failed:', err?.message);
             }
@@ -202,5 +238,7 @@ export class ThreeOverlayScene extends Phaser.Scene {
         const dtSec = delta * 0.001;
         if (this._npcs) this._npcs.update(dtSec);
         if (this._playerCtrl) this._playerCtrl.update(dtSec);
+        if (this._wildlife) this._wildlife.update(dtSec);
+        if (this._goblins) this._goblins.update(dtSec);
     }
 }
