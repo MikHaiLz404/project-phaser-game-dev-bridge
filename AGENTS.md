@@ -1,42 +1,31 @@
-# 🤖 Agents & Project Scope
+# ARPG Technical Specification & Agent Instructions
 
-## Project Root
-- **Path:** `/Users/jojo/Github/project-phaser-game-dev-bridge/arpg-template`
-- **Goal:** Build a Proof of Concept (POC) for a high-quality ARPG using the Phaser 4 framework and a custom "Bridge Skill" architecture.
+This project is an ARPG Proof of Concept (POC) built using **Phaser 4** and a custom "Bridge" architecture. It implements a unique **Two-Canvas Sandwich**: a 2D interaction layer (Phaser) stacked with a 3D background/object layer (Three.js).
 
-## Core Agents & Roles
+## Dev Environment
+- **Runtime:** Node.js (via Vite)
+- **Package Manager:** npm / yarn
+- **Core Dependencies:** `phaser` (^4.2.1), `three` (^0.169.0)
+- **Verification:** Ensure all dependencies are installed via `npm install`.
 
-### 1. Coding Agent (Primary Worker)
-- **Role:** Implementation of game mechanics, scene logic, and physics integration.
-- **Focus:** 
-  - Writing/Refactoring `src/scenes/`
-  - Integrating `src/systems/` (Combat, AI, Inventory)
-  - Ensuring Data-driven flow from `src/data/`
-- **Key Constraints:** 
-  - Always use absolute paths for file operations.
-  - Prioritize modularity (keep logic in systems, not scenes).
+## Build & Test
+- **Development:** `npm run dev` (starts Vite server)
+- **Build:** `npm run build` (produces production bundle)
+- **Preview:** `npm run preview` (locally serve the built project)
 
-### 2. Marketing Agent (Orchestrator)
-- **Role:** Content strategy, funnel planning, and asset positioning.
-- **Focus:** 
-  - Developing content for "Solo Dev Empowerment".
-  - Creating Lead Magnets (Starter Kits).
-  - Managing the roadmap in `task.md`.
+## Project Structure & Conventions
+- **Scenes (`src/scenes/`):** Entry points for game states. Each scene must be registered in `main.js`.
+- **Systems (`src/systems/`):** Logic-heavy modules (Combat, AI, Inventory). Do not house complex logic inside Scenes; call Systems instead.
+- **Data (`src/data/`):** JSON files drive entity stats and items. Assets must be pulled from data rather than hardcoded in classes.
+- **Hybrid Architecture:** `GameScene` manages the 2D game loop, while `ThreeOverlayScene` handles the Three.js rendering layer simultaneously.
 
-### 3. Design Agent (Future)
-- **Role:** UI/UX layout, branding, and visual assets.
-- **Focus:**
-  - Designing HUD elements.
-  - Creating visual "Juice" specs.
+## Engineering Guidelines
+- **Module Pattern:** Use clean Exports/Imports. Avoid global variables except for the `game` instance and debug-only globals (`window.__three`).
+- **State Management:** Use flags (e.g., `isAttacking`, `isGuarding`) to gate state transitions in Entity classes.
+- **Phaser Specifics:** The Phaser canvas is appended inside `#game-container`. Always allow the physics engine to handle velocity-based movement.
 
-## Project Structure & Key Paths
-- **Scenes:** `src/scenes/` (Entry points for game states)
-- **Systems:** `src/systems/` (The "Engine" - Combat, AI, Inventory)
-- **Data:** `src/data/` (JSON files for enemies, items, configs)
-- **Bridge Skills:** `../bridge-skills/` (Reference library for patterns)
-- **Assets:** `assets/` (Placeholder or real textures)
-
-## Operating Guidelines
-- **Verify First:** Always check if a file exists before attempting to read/write.
-- **Module Pattern:** Do not hardcode enemy stats in scenes; always pull from `data/`.
-- **State Machine:** Use the `isAttacking`, `isGuarding`, `isDodging` flags to manage character state transitions.
+## Pitfalls
+- **Sync/Async Conflicts:** Three.js model loading is async. Ensure `ThreeWorld` state is initialized before first render.
+- **Active Scene Chain:** `ThreeOverlayScene` must be registered *before* standard game scenes to ensure it doesn't cause conflicts during active scene switching.
+- **Debug Overlay:** Only the `#debug-overlay` and `.dbg-*` IDs are used for debug info; do not modify these IDs as they are hardcoded in `main.js`.
+- **3D Context:** Use standard Three.js materials/cameras where possible; avoid using custom shaders unless absolutely required via the Bridge API.
