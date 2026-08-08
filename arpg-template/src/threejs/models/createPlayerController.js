@@ -372,9 +372,10 @@ export default function createPlayerController(opts = {}) {
             const step = speed * dt;
             player.position.x += dir.x * step;
             player.position.z += dir.z * step;
-            // Clamp to ground plane bounds (50×50 → [-25,25])
-            player.position.x = Math.max(-25, Math.min(25, player.position.x));
-            player.position.z = Math.max(-25, Math.min(25, player.position.z));
+            // Clamp to ground plane bounds (100×100 → [-50,50]) so the
+            // player can walk from the village into the northern forest.
+            player.position.x = Math.max(-50, Math.min(50, player.position.x));
+            player.position.z = Math.max(-50, Math.min(50, player.position.z));
             player.userData.setState(running ? 'run' : 'walk');
         } else {
             player.userData.setState('idle');

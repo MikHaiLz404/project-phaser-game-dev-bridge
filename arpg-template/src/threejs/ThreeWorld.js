@@ -51,11 +51,11 @@ export class ThreeWorld {
         sun.castShadow = true;
         sun.shadow.mapSize.set(2048, 2048);
         sun.shadow.camera.near = 0.1;
-        sun.shadow.camera.far = 50;
-        sun.shadow.camera.left = -20;
-        sun.shadow.camera.right = 20;
-        sun.shadow.camera.top = 20;
-        sun.shadow.camera.bottom = -20;
+        sun.shadow.camera.far = 80;
+        sun.shadow.camera.left = -45;
+        sun.shadow.camera.right = 45;
+        sun.shadow.camera.top = 45;
+        sun.shadow.camera.bottom = -45;
         sun.shadow.bias = -0.001;
         this.scene.add(sun);
 
@@ -81,7 +81,8 @@ export class ThreeWorld {
         // Enable shadow rendering will happen after WebGLRenderer is created in boot()
 
         // Layer 2: Ground plane — sits at y = -1, receives shadows
-        const groundGeo = new THREE.PlaneGeometry(50, 50);
+        // 100×100 (was 50×50) to fit village (±22) + forest (z: -25..-65)
+        const groundGeo = new THREE.PlaneGeometry(100, 100);
         const groundMat = new THREE.MeshStandardMaterial({
             color: 0x2a2a3a,
             roughness: 0.9,
@@ -93,8 +94,8 @@ export class ThreeWorld {
         this.ground.receiveShadow = true;
         this.scene.add(this.ground);
 
-        // Layer 2: Grid helper — 10x10 cells for spatial reference
-        this.grid = new THREE.GridHelper(50, 25, 0x4a5a8a, 0x2a3a6a);
+        // Layer 2: Grid helper — 25×25 cells for spatial reference
+        this.grid = new THREE.GridHelper(100, 50, 0x4a5a8a, 0x2a3a6a);
         this.grid.position.y = -0.99;
         this.scene.add(this.grid);
 
@@ -126,18 +127,19 @@ export class ThreeWorld {
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-        this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+        this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 150);
         // Pulled back to fit the village cluster (houses span ±18, road cross ±15)
-        this.camera.position.set(20, 12, 32);
-        this.camera.lookAt(0, 0.5, 0);
+        // + the forest zone to the north (z down to -65).
+        this.camera.position.set(30, 20, 48);
+        this.camera.lookAt(0, 0.5, -15);
 
         // Layer 5: OrbitControls — mouse drag rotates, scroll zooms, right-drag pans
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.enableDamping = true;
         this.controls.dampingFactor = 0.05;
-        this.controls.target.set(0, 0, 0);
+        this.controls.target.set(0, 0, -15);
         this.controls.minDistance = 2;
-        this.controls.maxDistance = 60;
+        this.controls.maxDistance = 90;
         this.controls.maxPolarAngle = Math.PI * 0.49; // prevent going below ground
         // enableRotate is disabled — player controller handles orbit in follow mode.
         // enablePan stays ON so Right-Drag pan works regardless of follow mode.
