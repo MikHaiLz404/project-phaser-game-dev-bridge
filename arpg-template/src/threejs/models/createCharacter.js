@@ -269,8 +269,11 @@ export default function createCharacter(spec = {}) {
         // ConeGeometry default points along local +Y. Rotate so its apex
         // points along local +Z (the documented sword-forward direction).
         tip.rotation.x = Math.PI / 2;
-        // Sits just past the blade's far face — the 0.045 gap reads as a
-        // visible tip taper from gameplay camera distance.
+        // Sits at z=0.88. ConeGeometry height = 0.12, so half-height = 0.06;
+        // after rotating the cone to point along +Z, its base sits at
+        // z = 0.88 - 0.06 = 0.82. The blade extends to z = 0.835 (centre
+        // 0.46 + half-length 0.375), so the tip overlaps the blade by
+        // ~0.015 — visually reads as a continuous taper with no visible seam.
         tip.position.set(0, 0, 0.88);
         tip.castShadow = true;
         sword.add(tip);
