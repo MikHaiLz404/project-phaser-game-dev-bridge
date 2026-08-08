@@ -256,14 +256,22 @@ export default function createCharacter(spec = {}) {
         guard.castShadow = true;
         sword.add(guard);
 
-        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.75, 0.10), matBlade);
+        // PAT-10: blade geometry previously used BoxGeometry(0.06, 0.75, 0.10)
+        // which makes the long axis run along local +Y. The comment above
+        // declares sword-forward = +Z, so we rebuild the blade with its long
+        // axis on Z and place the tip just past the blade's far face.
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.10, 0.75), matBlade);
         blade.position.set(0, 0, 0.46);  // blade center at z=0.46, length 0.75 → extends z=0.085..0.835
         blade.castShadow = true;
         sword.add(blade);
 
         const tip = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.12, 4), matBlade);
-        tip.rotation.x = -Math.PI / 2;  // cone default +Y → rotate to +Z
-        tip.position.set(0, 0, 0.88);  // sits at far end of the blade, pointing further forward
+        // ConeGeometry default points along local +Y. Rotate so its apex
+        // points along local +Z (the documented sword-forward direction).
+        tip.rotation.x = Math.PI / 2;
+        // Sits just past the blade's far face — the 0.045 gap reads as a
+        // visible tip taper from gameplay camera distance.
+        tip.position.set(0, 0, 0.88);
         tip.castShadow = true;
         sword.add(tip);
 
