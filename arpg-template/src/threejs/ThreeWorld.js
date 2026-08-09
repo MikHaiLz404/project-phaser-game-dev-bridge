@@ -114,20 +114,39 @@ export class ThreeWorld {
     /**
      * Attach the renderer to a canvas and set initial size.
      *
-     * Idempotent across dispose/reboot cycles: if a previous boot left
-     * a renderer alive, dispose it first so the new boot starts from a
-     * fully clean slate (no leaking WebGL contexts, no stale scene
-     * contents, no duplicated lights/ground/grid).
+     * PAT-9 contract: idempotent across dispose/reboot cycles.
+     *
+     * If called twice in a row WITHOUT a dispose() between, this is a
+     * bug — we don't try to teardown a live world from inside boot(),
+     * because the live world owns scene contents and controllers that
+     * boot() doesn't have the references to dispose. Callers must
+     * either:
+     *   1. Call boot() once on first create, then dispose() on shutdown
+     *      and boot() again on relaunch — the supported cycle.
+     *   2. Treat a second consecutive boot() as a no-op (the old
+     *      defensive behaviour) so a misordered call doesn't crash.
+     *
+     * The teardown path (ThreeOverlayScene._onShutdown) owns the full
+     * lifecycle: controllers first, then dispose() which nulls scene,
+     * root, lights, and camera. The next boot() therefore starts from
+     * a fully empty world.
      *
      * @param {HTMLCanvasElement} canvas
      */
     boot(canvas) {
-        // PAT-9: tear down any leftover state from a prior cycle before
-        // rebuilding. Without this, relaunching ThreeOverlayScene would
-        // either early-return (old behaviour, broken) or accumulate
-        // duplicate lights/ground/grid (new behaviour without this guard).
+        // PAT-9 (review round 2): refuse to silently tear down a live
+        // world from inside boot(). The previous fix would drop any
+        // scene contents + controllers that the owner still references,
+        // because boot() only nulls the renderer/controls/gui/resize
+        // listener — not the scene graph or the controllers attached to
+        // it. The owner must call dispose() explicitly between boots.
         if (this.renderer) {
-            this._teardownRenderer();
+            console.warn(
+                '[ThreeWorld] boot() called while a renderer is still alive — ' +
+                'ignoring. Caller must dispose() the existing world first ' +
+                '(see ThreeOverlayScene._onShutdown).',
+            );
+            return;
         }
 
         this.renderer = new THREE.WebGLRenderer({
