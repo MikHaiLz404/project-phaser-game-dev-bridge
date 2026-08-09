@@ -12,6 +12,7 @@
     "test:threeworld-reboot": "node tests/threeworld-reboot.test.mjs",
     "test:threeworld-relaunch": "node tests/threeworld-relaunch.playwright.mjs",
     "test:threeoverlay-lifecycle": "node tests/threeoverlay-scene-lifecycle.playwright.mjs",
+    "test:debug-overlay-lifecycle": "node tests/debug-overlay-lifecycle.playwright.mjs",
     "test:model-loader-concurrent": "node tests/model-loader-concurrent.test.mjs",
     "test:combat-attack-state": "node tests/combat-attack-state.playwright.mjs",
     "test:data-schema": "node --test tests/data-schema.test.mjs",
