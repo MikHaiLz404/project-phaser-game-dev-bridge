@@ -8,6 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:sword-axes": "node tests/sword-axes.test.mjs",
+    "test:threeworld-reboot": "node tests/threeworld-reboot.test.mjs",
+    "test:threeworld-relaunch": "node tests/threeworld-relaunch.playwright.mjs",
     "capture:screenshot": "node scripts/capture-sword-screenshot.mjs"
   },
   "dependencies": {
@@ -15,6 +17,7 @@
     "three": "^0.169.0"
   },
   "devDependencies": {
+    "jsdom": "^30.0.1",
     "lil-gui": "^0.21.0",
     "playwright": "^1.62.1",
     "vite": "^6.0.0"
