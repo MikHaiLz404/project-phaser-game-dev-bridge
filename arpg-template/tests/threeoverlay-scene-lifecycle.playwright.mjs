@@ -14,6 +14,7 @@ const TARGET_URL = process.env.LIFECYCLE_URL ?? 'http://127.0.0.1:5174/';
 const SCENE_KEY = 'ThreeOverlayScene';
 const LATE_MODEL_URL = '/tests/fixtures/late-model-factory.js?lifecycle-delay=1';
 const CACHED_MODEL_URL = '/tests/fixtures/late-model-factory.js?cache-lifecycle=1';
+const SPEC_ECHO_MODEL_URL = '/tests/fixtures/spec-echo-model-factory.js?epoch-shared=1';
 
 function assert(condition, message) {
     if (!condition) throw new Error(message);
@@ -110,6 +111,16 @@ async function main() {
             await route.continue();
         });
 
+        let releaseSpecEchoImport;
+        const specEchoImportReleased = new Promise((resolve) => { releaseSpecEchoImport = resolve; });
+        let markSpecEchoImportRequested;
+        const specEchoImportRequested = new Promise((resolve) => { markSpecEchoImportRequested = resolve; });
+        await page.route(/\/tests\/fixtures\/spec-echo-model-factory\.js\?.*epoch-shared=1/, async (route) => {
+            markSpecEchoImportRequested();
+            await specEchoImportReleased;
+            await route.continue();
+        });
+
         let releaseDelayedImport;
         const delayedImportReleased = new Promise((resolve) => { releaseDelayedImport = resolve; });
         let markImportRequested;
@@ -187,6 +198,31 @@ async function main() {
         assert(cacheAfterShutdown.cached === 0,
             `ModelLoader cache lifecycle: shutdown left cached=${cacheAfterShutdown.cached}, expected 0`);
         console.log('[PASS] ModelLoader cache invalidated before world teardown:', JSON.stringify(cacheAfterShutdown));
+
+        // P2 in-flight epoch: a fresh lifecycle requesting the same URL with a
+        // different spec must not join the stale lifecycle's factory task.
+        await runScene(page, { modelUrl: SPEC_ECHO_MODEL_URL, spec: { variant: 'A' } });
+        await Promise.race([
+            specEchoImportRequested,
+            new Promise((_, reject) => setTimeout(
+                () => reject(new Error('Spec-echo model import was never requested')), 15000
+            )),
+        ]);
+        await stopScene(page);
+        await runScene(page, { modelUrl: SPEC_ECHO_MODEL_URL, spec: { variant: 'B' } });
+        releaseSpecEchoImport();
+        await page.waitForFunction(() => Boolean(
+            window.__three?.world?.root?.getObjectByName('__spec_echo_A__')
+            || window.__three?.world?.root?.getObjectByName('__spec_echo_B__')
+        ), null, { timeout: 15000 });
+        const specEchoNames = await page.evaluate(() =>
+            window.__three?.world?.root?.children.map((child) => child.name) ?? []
+        );
+        assert(specEchoNames.includes('__spec_echo_B__'),
+            `P2 in-flight epoch: fresh lifecycle received stale spec; root names=${JSON.stringify(specEchoNames)}`);
+        assert(!specEchoNames.includes('__spec_echo_A__'),
+            `P2 in-flight epoch: stale spec A appeared in fresh root; root names=${JSON.stringify(specEchoNames)}`);
+        console.log('[PASS] P2 fresh lifecycle owns same-URL spec B:', JSON.stringify(specEchoNames));
 
         // P1 stale async model: defer the model module, stop the generation that
         // requested it, launch a fresh generation, then release the old request.
