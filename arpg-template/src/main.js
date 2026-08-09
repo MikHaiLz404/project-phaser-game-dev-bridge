@@ -35,11 +35,15 @@ const game = new Phaser.Game(config);
 
 if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug')) {
     window.__game = game;
-    // Quick access to the 3D layer for poking from devtools.
-    // (Static import — Vite warns if the same module is both static and dynamic.)
+    // Keep every debug-only capability under the documented window.__three
+    // hook. Merging into one shared object prevents the async world import
+    // from replacing the overlay lifecycle seam.
+    const debugApi = window.__three ?? {};
+    window.__three = debugApi;
     import('./threejs/ThreeWorld.js').then(({ threeWorld }) => {
-        window.__three = { world: threeWorld };
+        debugApi.world = threeWorld;
     });
+
     // Live debug overlay (only when ?debug=1 in URL).
     const overlay = document.getElementById('debug-overlay');
     if (overlay) {
@@ -47,11 +51,37 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
         const fpsEl = document.getElementById('dbg-fps');
         const objEl = document.getElementById('dbg-objects');
         const sceneEl = document.getElementById('dbg-scene');
-        setInterval(() => {
+        let dbgTimer = window.setInterval(() => {
             fpsEl.textContent = String(Math.round(game.loop.actualFps));
-            objEl.textContent = String(window.__three?.world?.stats?.objects ?? 0);
+            objEl.textContent = String(debugApi.world?.stats?.objects ?? 0);
             const active = game.scene.getScenes(true)[0];
             sceneEl.textContent = active?.scene?.key ?? '--';
         }, 250);
+        let disposed = false;
+
+        const disposeDebugOverlay = () => {
+            if (disposed) return;
+            disposed = true;
+
+            if (dbgTimer !== null) {
+                window.clearInterval(dbgTimer);
+                dbgTimer = null;
+            }
+            window.removeEventListener('beforeunload', disposeDebugOverlay);
+            game.events.off('destroy', disposeDebugOverlay);
+            overlay.style.display = 'none';
+
+            if (debugApi.debugOverlay?.dispose === disposeDebugOverlay) {
+                delete debugApi.debugOverlay;
+            }
+        };
+
+        window.addEventListener('beforeunload', disposeDebugOverlay);
+        game.events.once('destroy', disposeDebugOverlay);
+        import.meta.hot?.dispose(disposeDebugOverlay);
+
+        // Gated runtime seam for lifecycle acceptance. It stays under the
+        // existing documented debug hook and removes itself on disposal.
+        debugApi.debugOverlay = { dispose: disposeDebugOverlay };
     }
 }
