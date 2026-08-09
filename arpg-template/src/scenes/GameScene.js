@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
+import { GAME_SCENE_KEY, UI_SCENE_KEY } from './sceneKeys.js';
 
 export class GameScene extends Phaser.Scene {
     constructor() {
-        super('Game');
+        super(GAME_SCENE_KEY);
     }
 
     create() {
@@ -32,8 +33,8 @@ export class GameScene extends Phaser.Scene {
         // Attack cooldown
         this.isAttacking = false;
 
-        // UI Scene
-        this.scene.launch('UIScene');
+        // UI Scene — use the key shared with UIScene registration.
+        this.scene.launch(UI_SCENE_KEY);
 
         // 3D background layer — launches in parallel so it keeps rendering
         // even when GameScene is paused (e.g. on menu open). Drop the demo
