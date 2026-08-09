@@ -24,6 +24,7 @@ import { ThreeBridge } from './ThreeBridge.js';
 
 const inflight = new Map();   // url → Promise<detached canonical THREE.Group>
 const cache = new Map();      // url → detached canonical THREE.Group (clone-safe)
+let cacheEpoch = 0;           // increments whenever cached templates are invalidated
 
 function loadTemplate(url, spec, options) {
     if (cache.has(url)) return Promise.resolve(cache.get(url));
@@ -34,6 +35,7 @@ function loadTemplate(url, spec, options) {
     // placement after the shared construction task resolves.
     const factoryOptions = { ...options, addToWorld: false };
     delete factoryOptions.emitEvents;
+    const taskEpoch = cacheEpoch;
 
     const task = (async () => {
         const mod = await import(/* @vite-ignore */ url);
@@ -45,7 +47,10 @@ function loadTemplate(url, spec, options) {
         if (!template || !(template.isObject3D)) {
             throw new Error(`Model factory at ${url} returned non-Object3D`);
         }
-        cache.set(url, template);
+        // clearCache() can run while the module import is pending. A template
+        // created by that stale lifecycle may satisfy its original caller, but
+        // must never repopulate the cache after teardown.
+        if (taskEpoch === cacheEpoch) cache.set(url, template);
         return template;
     })();
 
@@ -100,8 +105,9 @@ export function evict(url) {
     cache.delete(url);
 }
 
-/** Drop every cached model — call between levels or on game teardown. */
+/** Drop every cached model and invalidate pending template writes on teardown. */
 export function clearCache() {
+    cacheEpoch += 1;
     cache.clear();
 }
 

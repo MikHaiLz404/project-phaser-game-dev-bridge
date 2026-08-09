@@ -37,7 +37,11 @@ async function sceneState(page) {
 
 async function modelLoaderStats(page) {
     return page.evaluate(async () => {
-        const { stats } = await import('/src/threejs/ModelLoader.js');
+        const moduleUrl = performance.getEntriesByType('resource')
+            .map((entry) => entry.name)
+            .find((name) => name.includes('/src/threejs/ModelLoader.js'));
+        if (!moduleUrl) throw new Error('Vite did not load the active ModelLoader module');
+        const { stats } = await import(moduleUrl);
         return stats();
     });
 }
@@ -52,6 +56,13 @@ async function waitForActiveScene(page, expected) {
 async function stopScene(page) {
     await page.evaluate((key) => window.__game.scene.stop(key), SCENE_KEY);
     await waitForActiveScene(page, false);
+    // Phaser marks the scene inactive before its SHUTDOWN listeners finish.
+    // The owner lifecycle is complete only once ThreeWorld.dispose() has run.
+    await page.waitForFunction(
+        () => window.__three?.world?.stats?.running === false,
+        null,
+        { timeout: 15000 },
+    );
 }
 
 async function runScene(page, data = {}) {
@@ -194,12 +205,20 @@ async function main() {
         releaseDelayedImport();
         await page.waitForTimeout(750);
         const afterLateResolve = await sceneState(page);
+        const cacheAfterLateResolve = await modelLoaderStats(page);
         assert(!afterLateResolve.hasLateModel,
             'P1 async lifecycle: stale model load was added to the relaunched world');
+        assert(cacheAfterLateResolve.cached === 0,
+            `P2 stale cache write: delayed old lifecycle left cached=${cacheAfterLateResolve.cached}, expected 0`);
+        assert(cacheAfterLateResolve.inFlight === 0,
+            `P2 stale cache write: delayed old lifecycle left inFlight=${cacheAfterLateResolve.inFlight}, expected 0`);
         assert(afterLateResolve.pointerListeners === initial.pointerListeners,
             `P1 async lifecycle: relaunch listener count=${afterLateResolve.pointerListeners}, expected ${initial.pointerListeners}`);
         assert(pageErrors.length === 0, `Runtime page errors: ${pageErrors.join(' | ')}`);
-        console.log('[PASS] P1 stale async completion ignored:', JSON.stringify(afterLateResolve));
+        console.log('[PASS] P1 stale async completion and cache write ignored:', JSON.stringify({
+            scene: afterLateResolve,
+            cache: cacheAfterLateResolve,
+        }));
 
         await stopScene(page);
         const finalStop = await sceneState(page);
