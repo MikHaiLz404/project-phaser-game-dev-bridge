@@ -222,7 +222,15 @@ async function main() {
             `P2 in-flight epoch: fresh lifecycle received stale spec; root names=${JSON.stringify(specEchoNames)}`);
         assert(!specEchoNames.includes('__spec_echo_A__'),
             `P2 in-flight epoch: stale spec A appeared in fresh root; root names=${JSON.stringify(specEchoNames)}`);
-        console.log('[PASS] P2 fresh lifecycle owns same-URL spec B:', JSON.stringify(specEchoNames));
+        const cacheAfterSpecB = await modelLoaderStats(page);
+        assert(cacheAfterSpecB.cached === 1,
+            `P2 in-flight epoch: fresh spec B was not cached; cached=${cacheAfterSpecB.cached}`);
+        assert(cacheAfterSpecB.inFlight === 0,
+            `P2 in-flight epoch: B task did not settle; inFlight=${cacheAfterSpecB.inFlight}`);
+        console.log('[PASS] P2 fresh lifecycle owns and caches same-URL spec B:', JSON.stringify({
+            root: specEchoNames,
+            cache: cacheAfterSpecB,
+        }));
 
         // P1 stale async model: defer the model module, stop the generation that
         // requested it, launch a fresh generation, then release the old request.
