@@ -1,6 +1,7 @@
 {
   "name": "phaser-arpg-template",
   "version": "1.0.0",
+  "type": "module",
   "description": "ARPG template combining MengTo game design patterns with Phaser 4",
   "main": "src/main.js",
   "scripts": {
@@ -12,6 +13,10 @@
     "test:threeworld-relaunch": "node tests/threeworld-relaunch.playwright.mjs",
     "test:threeoverlay-lifecycle": "node tests/threeoverlay-scene-lifecycle.playwright.mjs",
     "test:model-loader-concurrent": "node tests/model-loader-concurrent.test.mjs",
+    "test:data-schema": "node --test tests/data-schema.test.mjs",
+    "test:inventory": "node --test tests/inventory-manager.test.mjs",
+    "test:combat-data-runtime": "node tests/combat-data-runtime.playwright.mjs",
+    "test:pat15": "node --test tests/data-schema.test.mjs tests/inventory-manager.test.mjs && node tests/combat-data-runtime.playwright.mjs",
     "test:model-preview": "node tests/bundled-model-production-preview.playwright.mjs",
     "test:pat13-ui-scene": "node tests/pat13-ui-scene-key.playwright.mjs",
     "capture:screenshot": "node scripts/capture-sword-screenshot.mjs"
