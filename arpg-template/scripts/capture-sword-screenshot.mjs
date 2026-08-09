@@ -7,10 +7,16 @@
  * proof that blade + tip read as a continuous sword shape.
  *
  * Usage:
- *   1. Run `npm run dev` in a separate terminal
- *   2. Wait for "Local: http://localhost:5173/" to appear
- *   3. Run `npm run capture:screenshot`
- *   4. Output PNG is written to arpg-template/screenshots/sword-gameplay.png
+ *   1. Install deps (first time only): `npm install`
+ *   2. Install the Chromium browser binary (first time only):
+ *        npx playwright install chromium
+ *      Playwright the library does NOT bundle browser binaries — they ship
+ *      separately via the CLI. `chromium.launch()` will throw on a clean
+ *      checkout unless this step has run.
+ *   3. Run `npm run dev` in a separate terminal
+ *   4. Wait for "Local: http://localhost:5173/" to appear
+ *   5. Run `npm run capture:screenshot`
+ *   6. Output PNG is written to arpg-template/screenshots/sword-gameplay.png
  *
  * Why headless + screenshot (not a unit test):
  *   - The automated assertion in tests/sword-axes.test.mjs already proves
@@ -151,6 +157,17 @@ async function main() {
             return result;
         });
         console.log(`capture: frame info = ${JSON.stringify(frameInfo)}`);
+
+        // P2 review feedback (MikHaiLz404): fail loudly if framing did not
+        // resolve a player + controls. Silently producing a screenshot
+        // without the sword in frame would defeat the point of this script.
+        if (frameInfo.error) {
+            throw new Error(
+                `capture: frame setup failed — ${frameInfo.error}. ` +
+                'Cannot guarantee the sword is in frame.',
+            );
+        }
+
         await page.waitForTimeout(500); // let controls.update settle
 
         // Read threeWorld stats from window.__three. With ?debug=1, main.js
@@ -161,11 +178,15 @@ async function main() {
         });
         console.log(`capture: threeWorld stats = ${JSON.stringify(stats)}`);
 
-        if (!stats || stats.objects === 0) {
-            console.warn(
-                'capture: WARN — ThreeWorld reports 0 objects. ' +
-                'Screenshot may be blank. The script continues so a debug ' +
-                'screenshot is still produced.',
+        // P2 review feedback (MikHaiLz404): fail when stats aren't ready
+        // (no stats, no objects, or scene not running) instead of warning
+        // and producing a blank screenshot. The script's whole purpose is
+        // to capture the rendered sword — if Three.js didn't run, the
+        // capture is meaningless.
+        if (!stats || stats.objects === 0 || !stats.running) {
+            throw new Error(
+                `capture: ThreeWorld not ready — stats=${JSON.stringify(stats)}. ` +
+                'Refusing to save a screenshot that cannot verify the sword.',
             );
         }
 
