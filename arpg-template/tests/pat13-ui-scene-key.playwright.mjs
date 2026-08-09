@@ -23,7 +23,23 @@ async function main() {
     try {
         const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
         const pageErrors = [];
+        const failedResponses = [];
         page.on('pageerror', (error) => pageErrors.push(error.message));
+        page.on('response', (response) => {
+            if (response.status() >= 400) failedResponses.push(`${response.status()} ${response.url()}`);
+        });
+        // GameScene also starts the Three.js overlay. Stub its model factory so
+        // this PAT-13 test exercises the Game → UI transition without folding
+        // the separate PAT-11 public-module loading defect into this contract.
+        await page.route(/\/models\/createDemoPropModel\.js(?:\?.*)?$/, (route) => route.fulfill({
+            contentType: 'application/javascript',
+            body: [
+                "import { Group } from '/node_modules/three/build/three.module.js';",
+                'export default function createPat13SmokeModel() {',
+                "  const group = new Group(); group.name = '__pat13_smoke_model__'; return group;",
+                '}',
+            ].join('\n'),
+        }));
 
         const url = new URL(TARGET_URL);
         url.searchParams.set('debug', '1');
@@ -51,6 +67,7 @@ async function main() {
         assert(state.gameActive, 'PAT-13: Game scene is not active');
         assert(state.uiActive, `PAT-13: registered UI scene was not active; keys=${JSON.stringify(state.registeredKeys)}`);
         assert(pageErrors.length === 0, `PAT-13 runtime page errors: ${pageErrors.join(' | ')}`);
+        assert(failedResponses.length === 0, `PAT-13 runtime failed responses: ${failedResponses.join(' | ')}`);
         console.log('[PASS] PAT-13 canonical UI scene launch:', JSON.stringify(state));
     } finally {
         await browser.close();
