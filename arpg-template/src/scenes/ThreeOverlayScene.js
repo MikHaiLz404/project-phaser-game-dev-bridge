@@ -117,11 +117,14 @@ export class ThreeOverlayScene extends Phaser.Scene {
                 // Attach the house-layout GUI tool after the village is in the world
                 if (threeWorld.gui) {
                     import('../threejs/models/createHouseLayoutTool.js').then(({ attachHouseLayoutTool }) => {
-                        if (!this._isCurrentGeneration(generation)) return;
+                        // The imported callback may belong to a pre-shutdown scene.
+                        // It may only attach to the village that is still owned by
+                        // this live generation's current root.
+                        if (!this._isCurrentGeneration(generation) || group.parent !== threeWorld.root) return;
                         const layoutTool = attachHouseLayoutTool(threeWorld.gui, threeWorld, group);
                         // attach is synchronous, but retain the second guard so a
                         // future async implementation cannot leave a stale tool live.
-                        if (!this._isCurrentGeneration(generation)) {
+                        if (!this._isCurrentGeneration(generation) || group.parent !== threeWorld.root) {
                             layoutTool?.dispose?.();
                             return;
                         }

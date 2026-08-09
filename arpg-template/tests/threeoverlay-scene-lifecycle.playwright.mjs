@@ -28,6 +28,7 @@ async function sceneState(page) {
             active: Boolean(scene?.scene?.isActive()),
             running: world?.stats?.running ?? false,
             pointerListeners: window.__threePointerTracker?.count() ?? -1,
+            houseLayoutOwned: Boolean(scene?._houseLayoutDispose),
             hasLateModel: Boolean(world?.root?.getObjectByName('__late_lifecycle_model__')),
         };
     }, SCENE_KEY);
@@ -80,6 +81,16 @@ async function main() {
             window.__threePointerTracker = { count: () => active.size };
         });
 
+        let releaseLayoutImport;
+        const layoutImportReleased = new Promise((resolve) => { releaseLayoutImport = resolve; });
+        let markLayoutImportRequested;
+        const layoutImportRequested = new Promise((resolve) => { markLayoutImportRequested = resolve; });
+        await page.route(/\/src\/threejs\/models\/createHouseLayoutTool\.js(?:\?.*)?$/, async (route) => {
+            markLayoutImportRequested();
+            await layoutImportReleased;
+            await route.continue();
+        });
+
         let releaseDelayedImport;
         const delayedImportReleased = new Promise((resolve) => { releaseDelayedImport = resolve; });
         let markImportRequested;
@@ -95,12 +106,35 @@ async function main() {
         await page.goto(url.toString(), { waitUntil: 'domcontentloaded', timeout: 30000 });
         await page.waitForSelector('#three-canvas', { timeout: 15000 });
         await waitForActiveScene(page, true);
-        await page.waitForFunction(() => window.__threePointerTracker?.count() > 0, null, { timeout: 15000 });
+        await Promise.race([
+            layoutImportRequested,
+            new Promise((_, reject) => setTimeout(
+                () => reject(new Error('House Layout import was never requested')), 15000
+            )),
+        ]);
+
+        // Hold the first House Layout import through a genuine teardown. The
+        // stale callback must not attach its old village to the fresh world.
+        const beforeLayoutRelease = await sceneState(page);
+        assert(beforeLayoutRelease.running, 'Initial scene: ThreeWorld is not running');
+        assert(beforeLayoutRelease.pointerListeners > 0,
+            'Initial scene: expected existing Three.js canvas pointer listeners');
+        assert(!beforeLayoutRelease.houseLayoutOwned,
+            'Initial scene: delayed House Layout tool attached before its import released');
+        await stopScene(page);
+        await runScene(page);
+        releaseLayoutImport();
+        await page.waitForFunction((baseline) => {
+            const scene = window.__game?.scene?.getScene('ThreeOverlayScene');
+            return Boolean(scene?._houseLayoutDispose)
+                && window.__threePointerTracker?.count() === baseline + 1;
+        }, beforeLayoutRelease.pointerListeners, { timeout: 15000 });
 
         const initial = await sceneState(page);
-        assert(initial.running, 'Initial scene: ThreeWorld is not running');
-        assert(initial.pointerListeners > 0, 'Initial scene: expected Three.js canvas pointer listeners');
-        console.log('[PASS] Initial Scene Manager launch:', JSON.stringify(initial));
+        assert(initial.houseLayoutOwned, 'House Layout: fresh generation did not retain its disposer');
+        assert(initial.pointerListeners === beforeLayoutRelease.pointerListeners + 1,
+            `House Layout async race: active listener count=${initial.pointerListeners}, expected ${beforeLayoutRelease.pointerListeners + 1}`);
+        console.log('[PASS] House Layout stale import ignored; fresh tool attached once:', JSON.stringify(initial));
 
         // P1 listener lifecycle: actual Scene Manager stop → launch must remove
         // every previous canvas listener, then recreate exactly the baseline count.
