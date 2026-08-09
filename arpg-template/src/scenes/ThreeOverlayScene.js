@@ -22,7 +22,7 @@
 import Phaser from 'phaser';
 import * as THREE from 'three';
 import { threeWorld } from '../threejs/ThreeWorld.js';
-import { loadModel } from '../threejs/ModelLoader.js';
+import { clearCache, loadModel } from '../threejs/ModelLoader.js';
 import { ThreeBridge } from '../threejs/ThreeBridge.js';
 import createAsianVillage from '../threejs/models/createAsianVillage.js';
 import createPlayerController from '../threejs/models/createPlayerController.js';
@@ -294,6 +294,10 @@ export class ThreeOverlayScene extends Phaser.Scene {
         this._goblins?.dispose?.();
         this._goblins = null;
 
+        // Cached templates share geometry/material with their clones. Invalidate
+        // them before world disposal releases those clone resources; a later
+        // lifecycle must never clone a template whose GPU resources were torn down.
+        clearCache();
         threeWorld.dispose();
         console.info('[ThreeOverlayScene] shutdown complete');
     }

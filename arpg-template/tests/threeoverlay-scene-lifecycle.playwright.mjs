@@ -13,6 +13,7 @@ import { chromium } from 'playwright';
 const TARGET_URL = process.env.LIFECYCLE_URL ?? 'http://127.0.0.1:5174/';
 const SCENE_KEY = 'ThreeOverlayScene';
 const LATE_MODEL_URL = '/tests/fixtures/late-model-factory.js?lifecycle-delay=1';
+const CACHED_MODEL_URL = '/tests/fixtures/late-model-factory.js?cache-lifecycle=1';
 
 function assert(condition, message) {
     if (!condition) throw new Error(message);
@@ -32,6 +33,13 @@ async function sceneState(page) {
             hasLateModel: Boolean(world?.root?.getObjectByName('__late_lifecycle_model__')),
         };
     }, SCENE_KEY);
+}
+
+async function modelLoaderStats(page) {
+    return page.evaluate(async () => {
+        const { stats } = await import('/src/threejs/ModelLoader.js');
+        return stats();
+    });
 }
 
 async function waitForActiveScene(page, expected) {
@@ -150,6 +158,24 @@ async function main() {
         assert(relaunched.pointerListeners === initial.pointerListeners,
             `P1 listener cleanup: relaunch has ${relaunched.pointerListeners}, expected ${initial.pointerListeners}`);
         console.log('[PASS] P1 Scene Manager relaunch:', JSON.stringify(relaunched));
+
+        // Cached templates share render resources with their clones. A real
+        // scene shutdown must invalidate the cache before ThreeWorld disposes
+        // the active clone, otherwise the next caller could clone resources
+        // already disposed by the previous world.
+        await stopScene(page);
+        await runScene(page, { modelUrl: CACHED_MODEL_URL });
+        await page.waitForFunction(() => Boolean(
+            window.__three?.world?.root?.getObjectByName('__late_lifecycle_model__')
+        ), null, { timeout: 15000 });
+        const cacheBeforeShutdown = await modelLoaderStats(page);
+        assert(cacheBeforeShutdown.cached === 1,
+            `ModelLoader cache setup: cached=${cacheBeforeShutdown.cached}, expected 1`);
+        await stopScene(page);
+        const cacheAfterShutdown = await modelLoaderStats(page);
+        assert(cacheAfterShutdown.cached === 0,
+            `ModelLoader cache lifecycle: shutdown left cached=${cacheAfterShutdown.cached}, expected 0`);
+        console.log('[PASS] ModelLoader cache invalidated before world teardown:', JSON.stringify(cacheAfterShutdown));
 
         // P1 stale async model: defer the model module, stop the generation that
         // requested it, launch a fresh generation, then release the old request.
