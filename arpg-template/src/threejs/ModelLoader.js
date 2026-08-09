@@ -7,8 +7,9 @@
  *   }
  *
  * img2threejs outputs exactly this shape (see ~/GitHub/img2threejs/SKILL.md
- * step 6 — `forge/stage3_build/generate_threejs_factory.py`). Drop the
- * generated factory into /public/models/ and reference it by URL.
+ * step 6 — `forge/stage3_build/generate_threejs_factory.py`). Bundled
+ * factories live under ./models; external browser-loadable modules continue
+ * to use the dynamic URL fallback.
  *
  * Caching:
  *   - One in-flight canonical-template Promise per URL and cache epoch — concurrent calls in one lifecycle share import/factory work.
@@ -21,6 +22,10 @@
 
 import { threeWorld } from './ThreeWorld.js';
 import { ThreeBridge } from './ThreeBridge.js';
+
+const BUNDLED_MODEL_IMPORTERS = new Map([
+    ['/models/createDemoPropModel.js', () => import('./models/createDemoPropModel.js')],
+]);
 
 const inflight = new Map();   // url → { epoch, task } for the current lifecycle epoch
 const cache = new Map();      // url → detached canonical THREE.Group (clone-safe)
@@ -39,7 +44,10 @@ function loadTemplate(url, spec, options) {
     delete factoryOptions.emitEvents;
 
     const task = (async () => {
-        const mod = await import(/* @vite-ignore */ url);
+        const bundledImporter = BUNDLED_MODEL_IMPORTERS.get(url);
+        const mod = bundledImporter
+            ? await bundledImporter()
+            : await import(/* @vite-ignore */ url);
         const factory = mod.default ?? mod.createXxxModel ?? mod.createModel;
         if (typeof factory !== 'function') {
             throw new Error(`Model factory at ${url} did not export a function`);
