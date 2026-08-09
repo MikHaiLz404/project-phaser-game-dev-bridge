@@ -22,7 +22,7 @@
 import Phaser from 'phaser';
 import * as THREE from 'three';
 import { threeWorld } from '../threejs/ThreeWorld.js';
-import { loadModel } from '../threejs/ModelLoader.js';
+import { clearCache, loadModel } from '../threejs/ModelLoader.js';
 import { ThreeBridge } from '../threejs/ThreeBridge.js';
 import createAsianVillage from '../threejs/models/createAsianVillage.js';
 import createPlayerController from '../threejs/models/createPlayerController.js';
@@ -38,15 +38,27 @@ export class ThreeOverlayScene extends Phaser.Scene {
         super(SCENE_KEY);
         this._modelUnsub = null;
         this._failUnsub = null;
+        this._houseLayoutDispose = null;
+        this._lifecycleGeneration = 0;
     }
 
     init(data) {
+        // Every Phaser launch gets a new generation. Async work captures this
+        // value and must prove it still owns the scene before mutating ThreeWorld.
+        this._lifecycleGeneration += 1;
         // data.modelUrl — optional, load on boot
         this._bootModelUrl = data?.modelUrl ?? null;
         this._bootSpec = data?.spec ?? null;
     }
 
+    _isCurrentGeneration(generation) {
+        return generation === this._lifecycleGeneration
+            && this.scene.isActive()
+            && threeWorld.stats.running;
+    }
+
     create() {
+        const generation = this._lifecycleGeneration;
         // Attach the 3D renderer to the #three-canvas element defined in
         // index.html. ThreeWorld.boot() is idempotent so a second launch
         // (e.g. after pause/resume) is a no-op.
@@ -69,11 +81,23 @@ export class ThreeOverlayScene extends Phaser.Scene {
         // Phase 1 POC: use the statically-imported demo factory directly.
         // The dynamic-URL path is kept intact for future img2threejs drops.
         if (this._bootModelUrl) {
-            loadModel(this._bootModelUrl, this._bootSpec ?? {}, { addToWorld: true })
+            const started = performance.now();
+            // Scene owns placement and bridge notifications. ModelLoader must not
+            // auto-add a late promise into whichever world happens to be current.
+            loadModel(this._bootModelUrl, this._bootSpec ?? {}, { addToWorld: false, emitEvents: false })
                 .then((group) => {
+                    if (!this._isCurrentGeneration(generation)) return;
+                    threeWorld.add(group);
+                    ThreeBridge.emit('model-loaded', {
+                        url: this._bootModelUrl,
+                        group,
+                        took: performance.now() - started,
+                    });
                     console.info('[ThreeOverlayScene] boot model ready:', group.name);
                 })
                 .catch((err) => {
+                    if (!this._isCurrentGeneration(generation)) return;
+                    ThreeBridge.emit('model-load-fail', { url: this._bootModelUrl, error: err });
                     console.warn('[ThreeOverlayScene] boot model failed (continuing):', err?.message);
                 });
         } else {
@@ -93,9 +117,22 @@ export class ThreeOverlayScene extends Phaser.Scene {
                 // Attach the house-layout GUI tool after the village is in the world
                 if (threeWorld.gui) {
                     import('../threejs/models/createHouseLayoutTool.js').then(({ attachHouseLayoutTool }) => {
-                        attachHouseLayoutTool(threeWorld.gui, threeWorld, group);
+                        // The imported callback may belong to a pre-shutdown scene.
+                        // It may only attach to the village that is still owned by
+                        // this live generation's current root.
+                        if (!this._isCurrentGeneration(generation) || group.parent !== threeWorld.root) return;
+                        const layoutTool = attachHouseLayoutTool(threeWorld.gui, threeWorld, group);
+                        // attach is synchronous, but retain the second guard so a
+                        // future async implementation cannot leave a stale tool live.
+                        if (!this._isCurrentGeneration(generation) || group.parent !== threeWorld.root) {
+                            layoutTool?.dispose?.();
+                            return;
+                        }
+                        this._houseLayoutDispose = layoutTool?.dispose ?? null;
                     }).catch((err) => {
-                        console.warn('[ThreeOverlayScene] house-layout tool attach failed:', err?.message);
+                        if (this._isCurrentGeneration(generation)) {
+                            console.warn('[ThreeOverlayScene] house-layout tool attach failed:', err?.message);
+                        }
                     });
                 }
                 console.info('[ThreeOverlayScene] inline asian village added:', group.name);
@@ -224,13 +261,24 @@ export class ThreeOverlayScene extends Phaser.Scene {
     }
 
     _onShutdown() {
+        // Invalidate every promise/import that was started by this scene before
+        // releasing any world resource. A relaunch receives a fresh generation.
+        this._lifecycleGeneration += 1;
+
+        // House Layout owns a persistent Three.js canvas pointerdown handler,
+        // GUI state, and timers. Dispose it before the renderer/root disappear.
+        this._houseLayoutDispose?.();
+        this._houseLayoutDispose = null;
+
         // PAT-14: dispose child systems BEFORE ThreeWorld teardown so their
         // window/canvas listeners and Three.Object3D references are released
         // before we lose the renderer. Order matters: controllers first
         // (they may still want to read from the scene/world during cleanup),
         // then dispose the world itself.
         this._modelUnsub?.();
+        this._modelUnsub = null;
         this._failUnsub?.();
+        this._failUnsub = null;
 
         // Player controller — disposes its keydown/keyup + pointer listeners
         // (createPlayerController.js:467-478).
@@ -246,6 +294,10 @@ export class ThreeOverlayScene extends Phaser.Scene {
         this._goblins?.dispose?.();
         this._goblins = null;
 
+        // Cached templates share geometry/material with their clones. Invalidate
+        // them before world disposal releases those clone resources; a later
+        // lifecycle must never clone a template whose GPU resources were torn down.
+        clearCache();
         threeWorld.dispose();
         console.info('[ThreeOverlayScene] shutdown complete');
     }

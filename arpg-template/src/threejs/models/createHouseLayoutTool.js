@@ -163,17 +163,42 @@ export function attachHouseLayoutTool(gui, world, village) {
         _folder: null,
     }));
 
-    // Selection marker — single shared instance, repositioned on select
+    // The tool owns canvas listeners, timers, GUI folders, and marker meshes.
+    // Keep every external resource behind one disposer so the scene can tear it
+    // down before ThreeWorld destroys the renderer and root graph.
+    let disposed = false;
     let selectionMarker = null;
+    let clickCanvas = null;
+    let onCanvasPointerDown = null;
+    const pendingTimeouts = new Set();
+
+    function schedule(callback, delay) {
+        const timeout = setTimeout(() => {
+            pendingTimeouts.delete(timeout);
+            if (!disposed) callback();
+        }, delay);
+        pendingTimeouts.add(timeout);
+        return timeout;
+    }
+
+    function disposeObject3D(object) {
+        object?.traverse?.((child) => {
+            child.geometry?.dispose?.();
+            const materials = Array.isArray(child.material) ? child.material : [child.material];
+            for (const material of materials) material?.dispose?.();
+        });
+    }
 
     function clearSelection() {
         if (selectionMarker && selectionMarker.parent) {
             selectionMarker.parent.remove(selectionMarker);
         }
+        disposeObject3D(selectionMarker);
         selectionMarker = null;
     }
 
     function selectHouse(entry, index) {
+        if (disposed || !entry?.mesh) return;
         clearSelection();
         selectionMarker = buildSelectionMarker();
         selectionMarker.position.set(entry.mesh.position.x, 0, entry.mesh.position.z);
@@ -190,7 +215,7 @@ export function attachHouseLayoutTool(gui, world, village) {
             // Tell the player controller to pause its target-tracking
             // for a few seconds so the camera stays on this house.
             world.controls.userFramedHouse = true;
-            setTimeout(() => {
+            schedule(() => {
                 if (world.controls) world.controls.userFramedHouse = false;
             }, 4000);
         }
@@ -244,23 +269,23 @@ export function attachHouseLayoutTool(gui, world, village) {
         houseFolder.close();
     });
 
-    // Click-to-select: raycast on house meshes
+    // Click-to-select: raycast on house meshes. Keep a stable handler reference
+    // so dispose() can remove it from the persistent Three.js canvas.
     function setupClickToSelect() {
         if (!world?.renderer || !world?.camera) return;
-        const canvas = world.renderer.domElement;
+        clickCanvas = world.renderer.domElement;
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
 
-        canvas.addEventListener('pointerdown', (ev) => {
-            // Skip if pointer-events disabled or middle/right click
-            if (ev.button !== 0) return;
+        onCanvasPointerDown = function onCanvasPointerDown(ev) {
+            if (disposed || ev.button !== 0) return;
 
-            const rect = canvas.getBoundingClientRect();
+            const rect = clickCanvas.getBoundingClientRect();
             mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
             mouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
             raycaster.setFromCamera(mouse, world.camera);
 
-            const meshes = layoutState.map((e) => e.mesh);
+            const meshes = layoutState.map((e) => e.mesh).filter(Boolean);
             const hits = raycaster.intersectObjects(meshes, true);
             if (hits.length === 0) return;
 
@@ -281,7 +306,8 @@ export function attachHouseLayoutTool(gui, world, village) {
                     }
                 }
             }
-        });
+        };
+        clickCanvas.addEventListener('pointerdown', onCanvasPointerDown);
     }
 
     setupClickToSelect();
@@ -289,13 +315,14 @@ export function attachHouseLayoutTool(gui, world, village) {
     // Utility actions
     const actions = {
         selectAll: () => {
+            if (disposed) return;
             // Sequentially focus each house briefly (visual sweep)
             let i = 0;
             const step = () => {
-                if (i >= layoutState.length) return;
+                if (disposed || i >= layoutState.length) return;
                 selectHouse(layoutState[i], i);
                 i++;
-                setTimeout(step, 400);
+                schedule(step, 400);
             };
             step();
         },
@@ -317,7 +344,7 @@ export function attachHouseLayoutTool(gui, world, village) {
             world.controls.update();
             // Pause player follow while showing the whole village
             world.controls.userFramedHouse = true;
-            setTimeout(() => {
+            schedule(() => {
                 if (world.controls) world.controls.userFramedHouse = false;
             }, 4000);
         },
@@ -351,5 +378,30 @@ export function attachHouseLayoutTool(gui, world, village) {
     console.info(`[HouseLayoutTool] attached — ${houses.length} houses`);
     console.info('[HouseLayoutTool] Tip: click any house in 3D to select & frame it');
 
-    return { layoutState, actions };
+    function dispose() {
+        if (disposed) return;
+        disposed = true;
+
+        if (clickCanvas && onCanvasPointerDown) {
+            clickCanvas.removeEventListener('pointerdown', onCanvasPointerDown);
+        }
+        clickCanvas = null;
+        onCanvasPointerDown = null;
+
+        for (const timeout of pendingTimeouts) clearTimeout(timeout);
+        pendingTimeouts.clear();
+        clearSelection();
+
+        // The parent GUI will be destroyed by ThreeWorld, but remove this
+        // folder now so no DOM/controllers retain layoutState during teardown.
+        folder.destroy?.();
+        for (const entry of layoutState) {
+            entry.mesh = null;
+            entry._folder = null;
+            entry._label = null;
+        }
+        layoutState.length = 0;
+    }
+
+    return { layoutState, actions, dispose };
 }
