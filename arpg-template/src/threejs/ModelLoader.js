@@ -11,8 +11,9 @@
  * generated factory into /public/models/ and reference it by URL.
  *
  * Caching:
- *   - One in-flight Promise per URL — concurrent calls share the same load.
- *   - Successful loads cached so repeat spawns are free.
+ *   - One in-flight canonical-template Promise per URL — concurrent calls share import/factory work.
+ *   - Successful templates are cached; every caller receives an independent clone.
+ *   - Placement and bridge events are caller-local and run after the shared task resolves.
  *
  * Errors:
  *   - Emits 'model-load-fail' on ThreeBridge so the UI can show a fallback.
@@ -21,67 +22,77 @@
 import { threeWorld } from './ThreeWorld.js';
 import { ThreeBridge } from './ThreeBridge.js';
 
-const inflight = new Map();   // url → Promise<THREE.Group>
-const cache = new Map();      // url → THREE.Group (clone-safe)
+const inflight = new Map();   // url → Promise<detached canonical THREE.Group>
+const cache = new Map();      // url → detached canonical THREE.Group (clone-safe)
+
+function loadTemplate(url, spec, options) {
+    if (cache.has(url)) return Promise.resolve(cache.get(url));
+    if (inflight.has(url)) return inflight.get(url);
+
+    // A factory can itself support addToWorld. Never allow its first caller to
+    // decide that side effect for every concurrent caller; the loader owns
+    // placement after the shared construction task resolves.
+    const factoryOptions = { ...options, addToWorld: false };
+    delete factoryOptions.emitEvents;
+
+    const task = (async () => {
+        const mod = await import(/* @vite-ignore */ url);
+        const factory = mod.default ?? mod.createXxxModel ?? mod.createModel;
+        if (typeof factory !== 'function') {
+            throw new Error(`Model factory at ${url} did not export a function`);
+        }
+        const template = factory(spec, factoryOptions);
+        if (!template || !(template.isObject3D)) {
+            throw new Error(`Model factory at ${url} returned non-Object3D`);
+        }
+        cache.set(url, template);
+        return template;
+    })();
+
+    inflight.set(url, task);
+    // Delete the in-flight entry on either outcome without creating an ignored
+    // rejecting promise from finally(). Each caller handles its own event path.
+    task.then(
+        () => inflight.delete(url),
+        () => inflight.delete(url),
+    );
+    return task;
+}
 
 /**
+ * Load a model instance. Import/factory work is shared by URL, but each caller
+ * receives its own clone and independently applies addToWorld/event behavior.
+ *
  * @param {string} url — path to the factory module (e.g. '/models/createKnifeModel.js')
- * @param {object} [spec] — passed to the factory as first argument
- * @param {object} [options] — passed to the factory as second argument
+ * @param {object} [spec] — passed to the factory as first argument on cache miss
+ * @param {object} [options] — caller-local placement/event options
  * @returns {Promise<THREE.Group>}
  */
 export async function loadModel(url, spec = {}, options = {}) {
     const emitEvents = options.emitEvents !== false;
-    if (cache.has(url)) {
-        // Clone so each consumer can position/rotate independently.
-        return cache.get(url).clone(true);
-    }
-    if (inflight.has(url)) {
-        return inflight.get(url);
-    }
-
     const started = performance.now();
-    const promise = (async () => {
-        let mod;
-        try {
-            mod = await import(/* @vite-ignore */ url);
-        } catch (err) {
-            if (emitEvents) ThreeBridge.emit('model-load-fail', { url, error: err });
-            throw err;
-        }
-        const factory = mod.default ?? mod.createXxxModel ?? mod.createModel;
-        if (typeof factory !== 'function') {
-            const err = new Error(`Model factory at ${url} did not export a function`);
-            if (emitEvents) ThreeBridge.emit('model-load-fail', { url, error: err });
-            throw err;
-        }
-        const group = factory(spec, options);
-        if (!group || !(group.isObject3D)) {
-            const err = new Error(`Model factory at ${url} returned non-Object3D`);
-            if (emitEvents) ThreeBridge.emit('model-load-fail', { url, error: err });
-            throw err;
-        }
-        cache.set(url, group);
-        if (emitEvents) {
-            ThreeBridge.emit('model-loaded', {
-                url,
-                group,
-                took: performance.now() - started,
-            });
-        }
-        // Auto-add to the world unless the caller asked to manage placement.
-        if (options.addToWorld !== false) {
-            threeWorld.add(group);
-        }
-        return group;
-    })();
-
-    inflight.set(url, promise);
+    let template;
     try {
-        return await promise;
-    } finally {
-        inflight.delete(url);
+        template = await loadTemplate(url, spec, options);
+    } catch (err) {
+        if (emitEvents) ThreeBridge.emit('model-load-fail', { url, error: err });
+        throw err;
     }
+
+    // The cache remains detached and immutable to caller placement. Every
+    // caller gets an independent Object3D tree, including the first caller.
+    const group = template.clone(true);
+    if (emitEvents) {
+        ThreeBridge.emit('model-loaded', {
+            url,
+            group,
+            took: performance.now() - started,
+        });
+    }
+    if (options.addToWorld !== false) {
+        threeWorld.add(group);
+    }
+    return group;
 }
 
 /** Drop a single model from the cache (next load will refetch). */
