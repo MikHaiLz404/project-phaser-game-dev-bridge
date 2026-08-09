@@ -102,41 +102,41 @@ await Promise.all([
         );
     }),
 
-    test('blade long-axis direction is (0, 0, +1) in world space', () => {
-        // P3 review feedback (MikHaiLz404): derive the long-axis direction
-        // from the mesh's actual world quaternion, not a hard-coded local
-        // vector. Future parent/root rotations would otherwise silently
-        // invalidate this test.
-        const world = new THREE.Vector3(0, 0, 1).applyQuaternion(
-            bladeMesh.getWorldQuaternion(new THREE.Quaternion()),
+    test('blade long-axis direction is (0, 0, +1) in sword-local space', () => {
+        // Reviewer (MikHaiLz404) follow-up: testing world-space absolute
+        // direction couples the assertion to parent/root rotations. The
+        // PAT-10 contract is "sword-forward = local +Z" — verify that in
+        // the mesh's own local frame (its own .quaternion) so the result
+        // is independent of any future transform on the character root.
+        const local = new THREE.Vector3(0, 0, 1).applyQuaternion(
+            bladeMesh.quaternion,
         );
-        assertNear(world.x, 0, 1e-6, 'blade.x');
-        assertNear(world.y, 0, 1e-6, 'blade.y');
-        assertNear(world.z, 1, 1e-6, 'blade.z');
+        assertNear(local.x, 0, 1e-6, 'blade.x');
+        assertNear(local.y, 0, 1e-6, 'blade.y');
+        assertNear(local.z, 1, 1e-6, 'blade.z');
     }),
 
-    test('tip apex direction is (0, 0, +1) in world space', () => {
-        // P3 review feedback (MikHaiLz404): use the tip mesh's world
-        // quaternion (same pattern as blade), not a hard-coded Euler.
-        // ConeGeometry default apex points along local +Y; after the +PI/2
-        // X rotation applied to the mesh, the apex must end up along
-        // world +Z — and that translation through the world transform is
-        // exactly what we want to verify.
-        const world = new THREE.Vector3(0, 1, 0).applyQuaternion(
-            tipMesh.getWorldQuaternion(new THREE.Quaternion()),
+    test('tip apex direction is (0, 0, +1) in sword-local space', () => {
+        // Same rationale as the blade test: assert on the tip mesh's own
+        // local quaternion, not its world quaternion. ConeGeometry's
+        // default apex is local +Y; after the +PI/2 X rotation applied
+        // to the mesh, the apex should point along the mesh's local +Z.
+        const local = new THREE.Vector3(0, 1, 0).applyQuaternion(
+            tipMesh.quaternion,
         );
-        assertNear(world.x, 0, 1e-6, 'tip.x');
-        assertNear(world.y, 0, 1e-6, 'tip.y');
-        assertNear(world.z, 1, 1e-6, 'tip.z');
+        assertNear(local.x, 0, 1e-6, 'tip.x');
+        assertNear(local.y, 0, 1e-6, 'tip.y');
+        assertNear(local.z, 1, 1e-6, 'tip.z');
     }),
 
     test('blade long-axis parallel to tip apex (dot >= 0.99)', () => {
-        // PAT-10 acceptance criterion: dot product of the two unit vectors
-        // must be >= 0.99 to guarantee the sword reads as one shape.
-        // P3 review feedback (MikHaiLz404): both axes must be derived
-        // from the meshes' world quaternions, not a mix of world and
-        // hard-coded local Euler — otherwise parent rotations can break
-        // the test even when blade and tip are still parallel.
+        // PAT-10 acceptance criterion (the only one that truly needs
+        // world space): dot product of the two unit vectors must be
+        // >= 0.99 to guarantee the sword reads as one shape. Parent
+        // rotations cannot break parallelism — if blade and tip stay
+        // parallel in their local frames, they stay parallel in world
+        // space too. So the dot-product test is parent-rotation-safe
+        // even when computed in world space.
         const bladeAxis = new THREE.Vector3(0, 0, 1).applyQuaternion(
             bladeMesh.getWorldQuaternion(new THREE.Quaternion()),
         );

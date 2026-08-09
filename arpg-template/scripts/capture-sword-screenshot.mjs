@@ -68,9 +68,21 @@ async function main() {
         });
         const page = await context.newPage();
 
-        const fullUrl = TARGET_URL.includes('?')
-            ? TARGET_URL
-            : `${TARGET_URL}${DEBUG_QUERY}`;
+        // Reviewer (MikHaiLz404) follow-up: build the URL via the WHATWG
+        // URL parser and set the debug flag through searchParams instead
+        // of substring-matching for `?`. The old `includes('?')` check
+        // missed the case where the URL already had a query string
+        // (e.g. CAPTURE_URL=https://example.com/path?foo=bar) and would
+        // silently skip the debug flag — the capture would then fail
+        // with "window.__three.world missing" because the debug overlay
+        // never exposed the world handle.
+        const fullUrl = (() => {
+            const u = new URL(TARGET_URL);
+            if (!u.searchParams.has('debug')) {
+                u.searchParams.set('debug', '1');
+            }
+            return u.toString();
+        })();
         console.log(`capture: navigating to ${fullUrl}`);
         await page.goto(fullUrl, {
             waitUntil: 'domcontentloaded',
