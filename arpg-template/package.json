@@ -12,6 +12,7 @@
     "test:threeworld-relaunch": "node tests/threeworld-relaunch.playwright.mjs",
     "test:threeoverlay-lifecycle": "node tests/threeoverlay-scene-lifecycle.playwright.mjs",
     "test:model-loader-concurrent": "node tests/model-loader-concurrent.test.mjs",
+    "test:combat-attack-state": "node tests/combat-attack-state.playwright.mjs",
     "capture:screenshot": "node scripts/capture-sword-screenshot.mjs"
   },
   "dependencies": {

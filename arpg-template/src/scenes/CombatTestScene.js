@@ -83,10 +83,7 @@ export class CombatTestScene extends Phaser.Scene {
         this.combatSystem = new CombatSystem(this);
         this.enemyAI = new EnemyAI(this, this.enemy);
 
-        // 4. Physics Overlaps
-        this.physics.add.overlap(this.player, this.enemy, this.handleCollision, null, this);
-
-        // 5. HUD / UI
+        // 4. HUD / UI
         this.add.text(10, 10, 'POC: ARPG with Phaser', { fontSize: '24px', fill: '#ffffff' });
         this.add.text(10, 40, 'WASD: Move | Space: Attack | G: Guard | D: Dodge', { fontSize: '16px', fill: '#ffffff' });
         
@@ -95,7 +92,7 @@ export class CombatTestScene extends Phaser.Scene {
         this.hpBar.setOrigin(0.5);
         this.hpBarBg.setOrigin(0.5);
 
-        // 6. Input Handling — use Phaser keyboard API for reliable key tracking
+        // 5. Input Handling — use Phaser keyboard API for reliable key tracking
         this.keys = this.input.keyboard.addKeys({
             W: Phaser.Input.Keyboard.KeyCodes.W,
             A: Phaser.Input.Keyboard.KeyCodes.A,
@@ -137,27 +134,14 @@ export class CombatTestScene extends Phaser.Scene {
             if (!this.player.isAttacking) this.performAttack();
         }
 
-        if (Phaser.Input.Keyboard.JustDown(this.keys.G)) {
+        if (Phaser.Input.Keyboard.JustDown(this.keys.G) && !this.player.isAttacking) {
             this.player.isGuarding = !this.player.isGuarding;
             this.player.setTint(this.player.isGuarding ? 0x0000ff : 0xffffff);
         }
     }
 
     performAttack() {
-        if (this.player.isAttacking) return;
-        this.player.isAttacking = true;
-        this.player.setTint(0xffffff); // Visual feedback for attack
-
-        // Call Combat System — uses startPlayerAttack(player, enemy) to
-        // match the actual CombatSystem API (no .attack method exists).
-        this.combatSystem.startPlayerAttack(this.player, this.enemy);
-    }
-
-    handleCollision(attacker, target) {
-        // The CombatSystem handles the heavy lifting of resolution
-        if (attacker === this.player && target === this.enemy) {
-            this.combatSystem.startPlayerAttack(this.player, this.enemy);
-        }
+        this.combatSystem.startPlayerAttack(this.player, this.enemyAI);
     }
 
     update() {
