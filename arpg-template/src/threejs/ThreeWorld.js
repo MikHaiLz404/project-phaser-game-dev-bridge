@@ -13,104 +13,139 @@
  *   1. ThreeOverlayScene.create() → ThreeWorld.boot(canvas)
  *   2. ThreeOverlayScene.update(dt) → ThreeWorld.update(dt)
  *   3. scene shutdown → ThreeWorld.dispose()
+ *   4. (optional) ThreeOverlayScene re-create → ThreeWorld.boot(canvas) again
+ *
+ * Reboot contract (PAT-9 [INV-004]): after dispose() the world must be
+ * bootable again. boot() rebuilds the WebGLRenderer, scene, root group,
+ * lights, ground, and grid from scratch so a relaunched scene gets a
+ * fully fresh 3D layer. dispose() is idempotent (calling it twice is a
+ * no-op), and `stats.disposed` is derived from `!this.renderer` rather
+ * than a permanent flag.
  */
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import GUI from 'lil-gui';
 
+/**
+ * Create the lights + ground + grid that every fresh world needs.
+ * Pulled out of the constructor (and out of boot()) so a relaunch can
+ * rebuild the world without duplicating constructor boilerplate.
+ */
+function _buildSceneContents(scene) {
+    // Layer 1: Background (deep navy blue)
+    scene.background = new THREE.Color(0x1a3a8a);
+
+    // Lighting — improved 3-point rig with warm key + cool fill + rim
+    const ambient = new THREE.AmbientLight(0xffffff, 0.35);
+    scene.add(ambient);
+
+    const sun = new THREE.DirectionalLight(0xffeec8, 1.6);
+    sun.position.set(8, 12, 6);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 0.1;
+    sun.shadow.camera.far = 80;
+    sun.shadow.camera.left = -45;
+    sun.shadow.camera.right = 45;
+    sun.shadow.camera.top = 45;
+    sun.shadow.camera.bottom = -45;
+    sun.shadow.bias = -0.001;
+    scene.add(sun);
+
+    const fill = new THREE.DirectionalLight(0x88aaff, 0.5);
+    fill.position.set(-5, 3, -2);
+    scene.add(fill);
+
+    const rim = new THREE.DirectionalLight(0xccddff, 0.7);
+    rim.position.set(0, 4, -8);
+    scene.add(rim);
+
+    const hemi = new THREE.HemisphereLight(0xb8d8ff, 0x4a3a2a, 0.6);
+    scene.add(hemi);
+
+    // Ground plane — sits at y = -1, receives shadows
+    const groundGeo = new THREE.PlaneGeometry(100, 100);
+    const groundMat = new THREE.MeshStandardMaterial({
+        color: 0x2a2a3a,
+        roughness: 0.9,
+        metalness: 0.1,
+    });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -1;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // Grid helper — 25×25 cells for spatial reference
+    const grid = new THREE.GridHelper(100, 50, 0x4a5a8a, 0x2a3a6a);
+    grid.position.y = -0.99;
+    scene.add(grid);
+
+    return { ambient, sun, fill, rim, hemi, ground, grid };
+}
+
 export class ThreeWorld {
     constructor() {
+        // PAT-9: scene/root are created lazily in boot() now, NOT in the
+        // constructor. The constructor only initializes the singleton
+        // identity; the actual scene graph is built fresh on each boot()
+        // so a relaunch never reuses stale objects from a prior cycle.
         /** @type {THREE.WebGLRenderer|null} */
         this.renderer = null;
-        /** @type {THREE.Scene} */
-        this.scene = new THREE.Scene();
-        /** @type {THREE.PerspectiveCamera} */
+        /** @type {THREE.Scene|null} */
+        this.scene = null;
+        /** @type {THREE.PerspectiveCamera|null} */
         this.camera = null;
-        /** @type {THREE.Group} */
-        this.root = new THREE.Group();
-        this.scene.add(this.root);
+        /** @type {THREE.Group|null} */
+        this.root = null;
         /** @type {OrbitControls|null} */
         this.controls = null;
-        /** @type {{ ambient: THREE.AmbientLight, sun: THREE.DirectionalLight, fill: THREE.DirectionalLight, rim: THREE.DirectionalLight, point: THREE.PointLight } | null} */
+        /** @type {object|null} */
         this.lights = null;
         /** @type {GUI|null} */
         this.gui = null;
 
-        // Layer 1: Background (deep navy blue)
-        this.scene.background = new THREE.Color(0x1a3a8a);
-
-        // Layer 1: Lighting — improved 3-point rig with warm key + cool fill + rim
-        // Soft ambient so shadows aren't pitch-black
-        const ambient = new THREE.AmbientLight(0xffffff, 0.35);
-        this.scene.add(ambient);
-
-        // Key light — warm sun, casts shadows
-        const sun = new THREE.DirectionalLight(0xffeec8, 1.6);
-        sun.position.set(8, 12, 6);
-        sun.castShadow = true;
-        sun.shadow.mapSize.set(2048, 2048);
-        sun.shadow.camera.near = 0.1;
-        sun.shadow.camera.far = 80;
-        sun.shadow.camera.left = -45;
-        sun.shadow.camera.right = 45;
-        sun.shadow.camera.top = 45;
-        sun.shadow.camera.bottom = -45;
-        sun.shadow.bias = -0.001;
-        this.scene.add(sun);
-
-        // Fill light — cool blue from opposite side (softens shadows)
-        const fill = new THREE.DirectionalLight(0x88aaff, 0.5);
-        fill.position.set(-5, 3, -2);
-        this.scene.add(fill);
-
-        // Rim light — bright cool backlight to separate objects from background
-        const rim = new THREE.DirectionalLight(0xccddff, 0.7);
-        rim.position.set(0, 4, -8);
-        this.scene.add(rim);
-
-        // Studio lighting: 3-point rig (key + fill + rim) + hemisphere for daytime.
-        // No point lights — those are for game-world mood, not a controlled product showcase.
-
-        // Hemisphere — sky/ground tinting for a bright daytime outdoor feel.
-        const hemi = new THREE.HemisphereLight(0xb8d8ff, 0x4a3a2a, 0.6);
-        this.scene.add(hemi);
-
-        this.lights = { ambient, sun, fill, rim, hemi };
-
-        // Enable shadow rendering will happen after WebGLRenderer is created in boot()
-
-        // Layer 2: Ground plane — sits at y = -1, receives shadows
-        // 100×100 (was 50×50) to fit village (±22) + forest (z: -25..-65)
-        const groundGeo = new THREE.PlaneGeometry(100, 100);
-        const groundMat = new THREE.MeshStandardMaterial({
-            color: 0x2a2a3a,
-            roughness: 0.9,
-            metalness: 0.1,
-        });
-        this.ground = new THREE.Mesh(groundGeo, groundMat);
-        this.ground.rotation.x = -Math.PI / 2;
-        this.ground.position.y = -1;
-        this.ground.receiveShadow = true;
-        this.scene.add(this.ground);
-
-        // Layer 2: Grid helper — 25×25 cells for spatial reference
-        this.grid = new THREE.GridHelper(100, 50, 0x4a5a8a, 0x2a3a6a);
-        this.grid.position.y = -0.99;
-        this.scene.add(this.grid);
-
         this._running = false;
-        this._disposed = false;
+        // PAT-9: removed the permanent `_disposed` flag. `stats.disposed`
+        // is now derived from `!this.renderer` (see `get stats()` below).
     }
 
     /**
      * Attach the renderer to a canvas and set initial size.
-     * Idempotent — safe to call multiple times.
+     *
+     * PAT-9 contract: idempotent across dispose/reboot cycles.
+     *
+     * If called twice in a row WITHOUT a dispose() between, this is a
+     * bug — we don't try to teardown a live world from inside boot(),
+     * because the live world owns scene contents and controllers that
+     * boot() doesn't have the references to dispose. Callers must
+     * either:
+     *   1. Call boot() once on first create, then dispose() on shutdown
+     *      and boot() again on relaunch — the supported cycle.
+     *   2. Treat a second consecutive boot() as a no-op (the old
+     *      defensive behaviour) so a misordered call doesn't crash.
+     *
+     * The teardown path (ThreeOverlayScene._onShutdown) owns the full
+     * lifecycle: controllers first, then dispose() which nulls scene,
+     * root, lights, and camera. The next boot() therefore starts from
+     * a fully empty world.
+     *
      * @param {HTMLCanvasElement} canvas
      */
     boot(canvas) {
-        if (this.renderer || this._disposed) {
-            console.warn('[ThreeWorld] boot() called twice — ignoring');
+        // PAT-9 (review round 2): refuse to silently tear down a live
+        // world from inside boot(). The previous fix would drop any
+        // scene contents + controllers that the owner still references,
+        // because boot() only nulls the renderer/controls/gui/resize
+        // listener — not the scene graph or the controllers attached to
+        // it. The owner must call dispose() explicitly between boots.
+        if (this.renderer) {
+            console.warn(
+                '[ThreeWorld] boot() called while a renderer is still alive — ' +
+                'ignoring. Caller must dispose() the existing world first ' +
+                '(see ThreeOverlayScene._onShutdown).',
+            );
             return;
         }
 
@@ -126,6 +161,18 @@ export class ThreeWorld {
         this.renderer.toneMappingExposure = 1.0;
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        // PAT-9: build a fresh scene + root for each boot. The previous
+        // code created these in the constructor, which meant dispose()
+        // emptied the scene but left the THREE.Scene object itself
+        // holding stale background/fog references and any orphan children
+        // that escaped the dispose traversal.
+        this.scene = new THREE.Scene();
+        this.root = new THREE.Group();
+        this.scene.add(this.root);
+
+        // Rebuild lights + ground + grid into the fresh scene.
+        this.lights = _buildSceneContents(this.scene);
 
         this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 150);
         // Pulled back to fit the village cluster (houses span ±18, road cross ±15)
@@ -201,6 +248,37 @@ export class ThreeWorld {
         console.info('[ThreeWorld] booted — canvas:', canvas.width, 'x', canvas.height);
     }
 
+    /**
+     * Internal helper — dispose ONLY the renderer/controls/gui/resize
+     * listener. Does NOT touch the scene graph. Used by boot() when a
+     * previous cycle is still partially alive, and as the first step
+     * of the public dispose() method.
+     */
+    _teardownRenderer() {
+        window.removeEventListener('resize', this._resize);
+
+        if (this.controls) {
+            this.controls.dispose();
+            this.controls = null;
+        }
+
+        if (this.gui) {
+            this.gui.destroy();
+            this.gui = null;
+        }
+
+        if (this.renderer) {
+            this.renderer.dispose();
+            // PAT-9: do NOT call forceContextLoss() here. The same canvas
+            // DOM element is reused by the next boot() — forcing the WebGL
+            // context to die would leave the canvas in a "context lost"
+            // state that Three.js can't recover from. The renderer.dispose()
+            // above already releases GPU resources; forceContextLoss is
+            // reserved for permanent teardown (page unload, app shutdown).
+            this.renderer = null;
+        }
+    }
+
     _resize = () => {
         if (!this.renderer || !this.camera) return;
         const canvas = this.renderer.domElement;
@@ -257,54 +335,59 @@ export class ThreeWorld {
             console.warn('[ThreeWorld] add() called with non-Object3D:', obj);
             return;
         }
+        if (!this.root) return;
         this.root.add(obj);
     }
 
     remove(obj) {
+        if (!this.root) return;
         this.root.remove(obj);
     }
 
     /**
      * Tear down GPU resources. Call from Phaser scene `shutdown` event.
+     *
+     * PAT-9: idempotent — calling dispose() on an already-disposed world
+     * is a no-op (every step null-guards its target). After dispose(),
+     * a subsequent boot() rebuilds the world from scratch.
      */
     dispose() {
-        if (this._disposed) return;
+        if (!this.renderer && !this.scene) {
+            // Already disposed — no-op.
+            return;
+        }
+
         this._running = false;
-        window.removeEventListener('resize', this._resize);
+        this._teardownRenderer();
 
-        if (this.controls) {
-            this.controls.dispose();
-            this.controls = null;
+        if (this.scene) {
+            this.scene.traverse((obj) => {
+                if (obj.geometry) obj.geometry.dispose?.();
+                if (obj.material) {
+                    if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose?.());
+                    else obj.material.dispose?.();
+                }
+            });
+            this.scene.clear();
         }
 
-        if (this.gui) {
-            this.gui.destroy();
-            this.gui = null;
-        }
+        // PAT-9: null out scene/root/lights so a subsequent boot() truly
+        // rebuilds them rather than reusing a half-dead graph.
+        this.scene = null;
+        this.root = null;
+        this.lights = null;
+        this.camera = null;
 
-        if (this.renderer) {
-            this.renderer.dispose();
-            this.renderer.forceContextLoss?.();
-            this.renderer = null;
-        }
-        this.scene.traverse((obj) => {
-            if (obj.geometry) obj.geometry.dispose?.();
-            if (obj.material) {
-                if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose?.());
-                else obj.material.dispose?.();
-            }
-        });
-        this.scene.clear();
-        this._disposed = true;
         console.info('[ThreeWorld] disposed');
     }
 
     /** Debug helper exposed via window.__three.world */
     get stats() {
         return {
-            objects: this.root.children.length,
+            objects: this.root ? this.root.children.length : 0,
             running: this._running,
-            disposed: this._disposed,
+            // PAT-9: derived from renderer state. No more permanent flag.
+            disposed: !this.renderer,
         };
     }
 }

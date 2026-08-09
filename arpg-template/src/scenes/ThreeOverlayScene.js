@@ -224,8 +224,28 @@ export class ThreeOverlayScene extends Phaser.Scene {
     }
 
     _onShutdown() {
+        // PAT-14: dispose child systems BEFORE ThreeWorld teardown so their
+        // window/canvas listeners and Three.Object3D references are released
+        // before we lose the renderer. Order matters: controllers first
+        // (they may still want to read from the scene/world during cleanup),
+        // then dispose the world itself.
         this._modelUnsub?.();
         this._failUnsub?.();
+
+        // Player controller — disposes its keydown/keyup + pointer listeners
+        // (createPlayerController.js:467-478).
+        this._playerCtrl?.dispose?.();
+        this._playerCtrl = null;
+
+        // NPC / wildlife / goblin systems — their .dispose() removes the
+        // group from the scene and frees per-mesh geometry/material.
+        this._npcs?.dispose?.();
+        this._npcs = null;
+        this._wildlife?.dispose?.();
+        this._wildlife = null;
+        this._goblins?.dispose?.();
+        this._goblins = null;
+
         threeWorld.dispose();
         console.info('[ThreeOverlayScene] shutdown complete');
     }
