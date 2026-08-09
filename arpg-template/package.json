@@ -17,6 +17,8 @@
     "test:inventory": "node --test tests/inventory-manager.test.mjs",
     "test:combat-data-runtime": "node tests/combat-data-runtime.playwright.mjs",
     "test:pat15": "node --test tests/data-schema.test.mjs tests/inventory-manager.test.mjs && node tests/combat-data-runtime.playwright.mjs",
+    "test:model-preview": "node tests/bundled-model-production-preview.playwright.mjs",
+    "test:pat13-ui-scene": "node tests/pat13-ui-scene-key.playwright.mjs",
     "capture:screenshot": "node scripts/capture-sword-screenshot.mjs"
   },
   "dependencies": {
