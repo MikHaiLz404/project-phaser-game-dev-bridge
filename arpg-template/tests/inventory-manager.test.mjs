@@ -144,3 +144,20 @@ test('constructor validates inventory size and requires the preloaded item catal
         /Item catalog is not loaded in Phaser JSON cache under "items"/,
     );
 });
+
+test('inventory snapshots validated item definitions instead of sharing mutable cache data', () => {
+    const cachedItems = structuredClone(sourceItems);
+    const inventory = new InventoryManager(createScene(cachedItems), 2);
+    const expectedHeal = sourceItems.health_potion.stats.heal;
+
+    cachedItems.health_potion.maxStack = 99;
+    cachedItems.health_potion.stats.heal = 999;
+
+    assert.equal(inventory.getItemDef('health_potion').maxStack, 10);
+    assert.equal(inventory.getItemDef('health_potion').stats.heal, expectedHeal);
+    assert.equal(inventory.addItem('health_potion', 20), true);
+    assert.deepEqual(inventory.slots, [
+        { itemId: 'health_potion', quantity: 10 },
+        { itemId: 'health_potion', quantity: 10 },
+    ]);
+});

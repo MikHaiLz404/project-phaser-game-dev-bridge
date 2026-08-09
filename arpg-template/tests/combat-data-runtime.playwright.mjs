@@ -93,13 +93,17 @@ try {
         const armorSlot = scene.inventory?.slots.findIndex((slot) => slot?.itemId === 'dragon_armor');
         const swordEquipped = swordSlot >= 0 ? scene.inventory.equip(swordSlot) : false;
         const armorEquipped = armorSlot >= 0 ? scene.inventory.equip(armorSlot) : false;
+        const initialEnemyHp = scene.enemy?.hp;
+        const initialEnemyMaxHp = scene.enemy?.maxHp;
+        const damageApplied = scene.enemyAI.takeDamage(10);
+        scene.updateHUD();
 
         return {
             cacheEnemyHp: scene.cache.json.get('enemies')?.slime?.hp,
             cacheItemMaxStack: scene.cache.json.get('items')?.health_potion?.maxStack,
             enemyId: scene.enemy?.enemyId,
-            enemyHp: scene.enemy?.hp,
-            enemyMaxHp: scene.enemy?.maxHp,
+            enemyHp: initialEnemyHp,
+            enemyMaxHp: initialEnemyMaxHp,
             enemyX: scene.enemy?.x,
             enemyY: scene.enemy?.y,
             aiHp: scene.enemyAI?.config?.hp,
@@ -113,6 +117,10 @@ try {
             armorEquipped,
             equipment: scene.inventory?.equipment,
             derivedStats: scene.inventory?.getStats(),
+            damageApplied,
+            damagedAiHp: scene.enemyAI?.hp,
+            damagedSpriteHp: scene.enemy?.hp,
+            damagedHudWidth: scene.hpBar?.width,
             canvasCount: document.querySelectorAll('canvas').length,
         };
     });
@@ -148,6 +156,10 @@ try {
         hp: 0,
         fireResist: 50,
     });
+    assert.equal(runtime.damageApplied, true);
+    assert.equal(runtime.damagedAiHp, 63, 'EnemyAI damage did not update authoritative HP');
+    assert.equal(runtime.damagedSpriteHp, 63, 'EnemyAI damage left sprite HP stale');
+    assert.equal(runtime.damagedHudWidth, (63 / 73) * 200, 'EnemyAI damage left HUD HP stale');
     assert(runtime.canvasCount >= 2, `expected Phaser + Three canvases, got ${runtime.canvasCount}`);
     assert.deepEqual(pageErrors, [], `runtime page errors: ${pageErrors.join(' | ')}`);
     assert.deepEqual(failedResponses, [], `HTTP failures: ${failedResponses.join(' | ')}`);

@@ -4,6 +4,12 @@ import { EQUIPMENT_SLOTS, validateItemCatalog } from '../data/validateGameData.j
 
 const BASE_STATS = Object.freeze({ attack: 0, defense: 0, hp: 0 });
 
+function deepFreeze(value) {
+    if (value === null || typeof value !== 'object' || Object.isFrozen(value)) return value;
+    for (const child of Object.values(value)) deepFreeze(child);
+    return Object.freeze(value);
+}
+
 export class InventoryManager {
     constructor(scene, maxSlots = 20) {
         if (!Number.isInteger(maxSlots) || maxSlots <= 0) {
@@ -17,7 +23,8 @@ export class InventoryManager {
 
         this.scene = scene;
         this.maxSlots = maxSlots;
-        this.itemCatalog = validateItemCatalog(itemCatalog);
+        const validatedCatalog = validateItemCatalog(itemCatalog);
+        this.itemCatalog = deepFreeze(structuredClone(validatedCatalog));
         this.slots = new Array(maxSlots).fill(null);
         this.equipment = Object.fromEntries(EQUIPMENT_SLOTS.map((slot) => [slot, null]));
     }

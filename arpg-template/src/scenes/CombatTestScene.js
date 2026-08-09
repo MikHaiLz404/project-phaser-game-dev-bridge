@@ -11,6 +11,7 @@ export class CombatTestScene extends Phaser.Scene {
         this.combatSystem = null;
         this.enemyAI = null;
         this.inventory = null;
+        this.enemyHpChangedHandler = null;
     }
 
     preload() {
@@ -89,6 +90,18 @@ export class CombatTestScene extends Phaser.Scene {
         // 3. Initialize Systems — after both sprites are ready
         this.combatSystem = new CombatSystem(this);
         this.enemyAI = new EnemyAI(this, this.enemy, { ...enemyData, ...enemyColors });
+        this.enemy.takeDamage = (...args) => this.enemyAI.takeDamage(...args);
+        this.enemyHpChangedHandler = (hp, maxHp) => {
+            if (!this.enemy?.active) return;
+            this.enemy.hp = hp;
+            this.enemy.maxHp = maxHp;
+            this.updateHUD();
+        };
+        this.events.on('enemy-hp-changed', this.enemyHpChangedHandler);
+        this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+            this.events.off('enemy-hp-changed', this.enemyHpChangedHandler);
+            this.enemyHpChangedHandler = null;
+        });
         this.inventory = new InventoryManager(this, 20);
 
         // 4. Physics Overlaps
