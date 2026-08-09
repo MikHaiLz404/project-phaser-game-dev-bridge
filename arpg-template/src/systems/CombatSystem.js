@@ -16,6 +16,7 @@ export class CombatSystem {
             startup: 100,     // ms before hitbox active
             active: 80,       // ms hitbox is active
             recovery: 120,    // ms after active
+            range: 48,         // px from attacker origin to target origin
             damage: 25,       // base damage per hit
             knockback: 200,   // knockback velocity
             hitstop: 40,      // ms to freeze both attacker & target
@@ -32,6 +33,7 @@ export class CombatSystem {
             GUARDING: { tint: 0x66aaff, alpha: 0.9 },
             DODGING:  { tint: 0xffffff, alpha: 0.65 }
         };
+        this.playerAttackActions = new WeakMap();
     }
 
     // ─── Stat / Direction Helpers ────────────────────────────────────
@@ -71,6 +73,16 @@ export class CombatSystem {
         }, fallback);
     }
 
+    isTargetInRange(attacker, target, range = this.config.range) {
+        const attackerSprite = attacker?.sprite || attacker;
+        const targetSprite = target?.sprite || target;
+        if (!attackerSprite || !targetSprite) return false;
+        return Math.hypot(
+            targetSprite.x - attackerSprite.x,
+            targetSprite.y - attackerSprite.y
+        ) <= range;
+    }
+
     // ─── Player State Styles ─────────────────────────────────────────
 
     applyPlayerStyle(player, state) {
@@ -80,16 +92,36 @@ export class CombatSystem {
         player.setAlpha(style.alpha);
     }
 
-    startPlayerAttack(player) {
-        if (!player) return;
+    startPlayerAttack(player, target, hitConfig = {}) {
+        if (!player || !target || player.isAttacking) return false;
+
+        const action = { hitResolved: false };
+        this.playerAttackActions.set(player, action);
         player.isAttacking = true;
         player.isGuarding = false;
         player.isDodging = false;
         this.applyPlayerStyle(player, 'ATTACKING');
+
+        this.scene.time.delayedCall(this.config.startup, () => {
+            if (this.playerAttackActions.get(player) !== action || action.hitResolved) return;
+            action.hitResolved = true;
+            if (!this.isTargetInRange(player, target, hitConfig.range ?? this.config.range)) return;
+            const hit = this.resolveHit(player, target, hitConfig);
+            if (hit && target.hp <= 0) this.endPlayerAttack(player);
+        });
+
+        const totalDuration = this.config.startup + this.config.active + this.config.recovery;
+        this.scene.time.delayedCall(totalDuration, () => {
+            if (this.playerAttackActions.get(player) !== action) return;
+            this.endPlayerAttack(player);
+        });
+
+        return true;
     }
 
     endPlayerAttack(player, nextState = 'IDLE') {
         if (!player) return;
+        this.playerAttackActions.delete(player);
         player.isAttacking = false;
         this.applyPlayerStyle(player, nextState);
     }
@@ -226,6 +258,11 @@ export class CombatSystem {
         }
 
         if (!tookDamage) return false;
+
+        if (targetSprite !== target && Number.isFinite(target.hp)) {
+            targetSprite.hp = target.hp;
+            if (Number.isFinite(target.maxHp)) targetSprite.maxHp = target.maxHp;
+        }
 
         if (hitConfig.applyKnockback !== false && targetSprite?.body) {
             this.applyKnockback(targetSprite, impactDirection, hitConfig.knockbackForce || this.config.knockback, hitConfig.knockbackLift ?? -50);

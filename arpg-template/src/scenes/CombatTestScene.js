@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { CombatSystem } from '../systems/CombatSystem';
 import { EnemyAI } from '../systems/EnemyAI';
+import { InventoryManager } from '../systems/InventoryManager.js';
 
 export class CombatTestScene extends Phaser.Scene {
     constructor() {
@@ -9,6 +10,8 @@ export class CombatTestScene extends Phaser.Scene {
         this.enemy = null;
         this.combatSystem = null;
         this.enemyAI = null;
+        this.inventory = null;
+        this.enemyHpChangedHandler = null;
     }
 
     preload() {
@@ -59,21 +62,26 @@ export class CombatTestScene extends Phaser.Scene {
         this.player.isGuarding = false;
         this.player.isDodging = false;
 
-        // 2. Create Enemy (Sprite — supports setTint for AI feedback)
-        const enemyData = {
-            type: 'slime',
-            hp: 50,
-            maxHp: 50,
-            speed: 100,
-        };
-        this.enemy = this.add.sprite(600, 300, 'enemy');
+        // 2. Create Enemy from the canonical catalog loaded by PreloadScene.
+        const enemyId = 'slime';
+        const enemyData = this.cache.json.get('enemies')?.[enemyId];
+        if (!enemyData) {
+            throw new Error(`Enemy data is not loaded for "${enemyId}"`);
+        }
+        const enemyColors = Object.fromEntries(
+            Object.entries(enemyData.colors).map(([key, value]) => [key, Number(value)]),
+        );
+        this.enemy = this.add.sprite(enemyData.spawnX, enemyData.spawnY, 'enemy');
+        this.enemy.setDisplaySize(enemyData.displayWidth, enemyData.displayHeight);
         this.enemy.setDepth(100);
         this.physics.add.existing(this.enemy);
         this.enemy.body.setAllowGravity(false);
         this.enemy.body.setCollideWorldBounds(true);
         
+        this.enemy.enemyId = enemyId;
+        this.enemy.enemyData = enemyData;
         this.enemy.hp = enemyData.hp;
-        this.enemy.maxHp = enemyData.maxHp;
+        this.enemy.maxHp = enemyData.hp;
         this.enemy.isInvulnerable = false;
         this.enemy.isAttacking = false;
         this.enemy.isGuarding = false;
@@ -81,12 +89,22 @@ export class CombatTestScene extends Phaser.Scene {
         
         // 3. Initialize Systems — after both sprites are ready
         this.combatSystem = new CombatSystem(this);
-        this.enemyAI = new EnemyAI(this, this.enemy);
+        this.enemyAI = new EnemyAI(this, this.enemy, { ...enemyData, ...enemyColors });
+        this.enemy.takeDamage = (...args) => this.enemyAI.takeDamage(...args);
+        this.enemyHpChangedHandler = (hp, maxHp) => {
+            if (!this.enemy?.active) return;
+            this.enemy.hp = hp;
+            this.enemy.maxHp = maxHp;
+            this.updateHUD();
+        };
+        this.events.on('enemy-hp-changed', this.enemyHpChangedHandler);
+        this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+            this.events.off('enemy-hp-changed', this.enemyHpChangedHandler);
+            this.enemyHpChangedHandler = null;
+        });
+        this.inventory = new InventoryManager(this, 20);
 
-        // 4. Physics Overlaps
-        this.physics.add.overlap(this.player, this.enemy, this.handleCollision, null, this);
-
-        // 5. HUD / UI
+        // 4. HUD / UI
         this.add.text(10, 10, 'POC: ARPG with Phaser', { fontSize: '24px', fill: '#ffffff' });
         this.add.text(10, 40, 'WASD: Move | Space: Attack | G: Guard | D: Dodge', { fontSize: '16px', fill: '#ffffff' });
         
@@ -95,7 +113,7 @@ export class CombatTestScene extends Phaser.Scene {
         this.hpBar.setOrigin(0.5);
         this.hpBarBg.setOrigin(0.5);
 
-        // 6. Input Handling — use Phaser keyboard API for reliable key tracking
+        // 5. Input Handling — use Phaser keyboard API for reliable key tracking
         this.keys = this.input.keyboard.addKeys({
             W: Phaser.Input.Keyboard.KeyCodes.W,
             A: Phaser.Input.Keyboard.KeyCodes.A,
@@ -137,27 +155,14 @@ export class CombatTestScene extends Phaser.Scene {
             if (!this.player.isAttacking) this.performAttack();
         }
 
-        if (Phaser.Input.Keyboard.JustDown(this.keys.G)) {
+        if (Phaser.Input.Keyboard.JustDown(this.keys.G) && !this.player.isAttacking) {
             this.player.isGuarding = !this.player.isGuarding;
             this.player.setTint(this.player.isGuarding ? 0x0000ff : 0xffffff);
         }
     }
 
     performAttack() {
-        if (this.player.isAttacking) return;
-        this.player.isAttacking = true;
-        this.player.setTint(0xffffff); // Visual feedback for attack
-
-        // Call Combat System — uses startPlayerAttack(player, enemy) to
-        // match the actual CombatSystem API (no .attack method exists).
-        this.combatSystem.startPlayerAttack(this.player, this.enemy);
-    }
-
-    handleCollision(attacker, target) {
-        // The CombatSystem handles the heavy lifting of resolution
-        if (attacker === this.player && target === this.enemy) {
-            this.combatSystem.startPlayerAttack(this.player, this.enemy);
-        }
+        this.combatSystem.startPlayerAttack(this.player, this.enemyAI);
     }
 
     update() {
