@@ -69,14 +69,21 @@ handle. Use `ThreeBridge.emit(topic, payload)` to publish. Topics with
 
 ```javascript
 import { loadModel } from './threejs/ModelLoader.js';
-const group = await loadModel('/models/createKnifeModel.js', spec, options);
+const group = await loadModel('/models/createDemoPropModel.js', spec, options);
 // group is THREE.Group, ready to add to the world or your scene
 ```
+
+Factories that import npm packages such as `three` must live under
+`src/threejs/models/` and be registered in `BUNDLED_MODEL_IMPORTERS` so Vite
+can transform and bundle them. Do not place a bare-import factory under
+`public/`; public modules are served raw and browsers cannot resolve the bare
+`three` specifier. The dynamic URL fallback is only for modules that are
+already browser-loadable.
 
 The factory contract (matches img2threejs v1.4 output):
 
 ```javascript
-// public/models/createDemoPropModel.js
+// src/threejs/models/createDemoPropModel.js
 export default function createDemoPropModel(spec, options) {
     const group = new THREE.Group();
     // ... build geometry, materials, pivots ...
@@ -85,9 +92,10 @@ export default function createDemoPropModel(spec, options) {
 }
 ```
 
-ModelLoader caches successful loads, dedupes concurrent requests for the
-same URL, and emits `model-load-fail` on ThreeBridge when a factory
-returns non-Object3D or the module is missing.
+ModelLoader maps stable logical URLs to Vite-analyzable bundled importers,
+caches successful loads, dedupes concurrent requests for the same URL, and
+emits `model-load-fail` on ThreeBridge when a factory returns non-Object3D or
+the module is missing.
 
 ### 5. `src/scenes/ThreeOverlayScene.js` — the Phaser scene that drives the 3D layer
 

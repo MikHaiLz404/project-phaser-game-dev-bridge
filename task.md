@@ -28,7 +28,7 @@
     - [x] `src/threejs/ThreeBridge.js` — Phaser↔Three event bus
     - [x] `src/threejs/ModelLoader.js` — async loader for img2threejs-generated factories
     - [x] `src/scenes/ThreeOverlayScene.js` — Phaser scene driving the 3D layer
-    - [x] `public/models/createDemoPropModel.js` — placeholder factory matching img2threejs contract
+    - [x] `src/threejs/models/createDemoPropModel.js` — Vite-bundled placeholder factory matching img2threejs contract
     - [x] Update `index.html` — two stacked canvases (Phaser + Three.js), debug overlay
     - [x] `GameScene` launches `ThreeOverlayScene` in parallel with `UIScene`
     - [x] `bridge-skills/threejs-overlay/SKILL.md` — knowledge transfer
