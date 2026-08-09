@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
+import { GAME_SCENE_KEY, UI_SCENE_KEY } from './sceneKeys.js';
 
 export class UIScene extends Phaser.Scene {
     constructor() {
-        super('UI');
+        super(UI_SCENE_KEY);
     }
 
     create() {
@@ -18,7 +19,7 @@ export class UIScene extends Phaser.Scene {
         }).setOrigin(0.5);
 
         // Listen for HP changes
-        const gameScene = this.scene.get('Game');
+        const gameScene = this.scene.get(GAME_SCENE_KEY);
         gameScene.events.on('enemy-hp-changed', (hp) => {
             this.updateHPBar(hp);
         });
