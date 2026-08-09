@@ -40,6 +40,7 @@ export class ThreeOverlayScene extends Phaser.Scene {
         this._failUnsub = null;
         this._houseLayoutDispose = null;
         this._lifecycleGeneration = 0;
+        this._shutdownComplete = true;
     }
 
     init(data) {
@@ -58,6 +59,7 @@ export class ThreeOverlayScene extends Phaser.Scene {
     }
 
     create() {
+        this._shutdownComplete = false;
         const generation = this._lifecycleGeneration;
         // Attach the 3D renderer to the #three-canvas element defined in
         // index.html. ThreeWorld.boot() is idempotent so a second launch
@@ -256,11 +258,19 @@ export class ThreeOverlayScene extends Phaser.Scene {
             }
         }
 
-        // Auto-shutdown: dispose ThreeWorld when this scene is stopped.
+        // Scene stop and full Phaser Game destruction are separate lifecycle
+        // paths. Own both so a page/HMR teardown cannot leave WebGL resources
+        // running when SceneManager never emits SHUTDOWN.
         this.events.once(Phaser.Scenes.Events.SHUTDOWN, this._onShutdown, this);
+        this.game.events.once('destroy', this._onShutdown, this);
     }
 
     _onShutdown() {
+        if (this._shutdownComplete) return;
+        this._shutdownComplete = true;
+        this.events.off(Phaser.Scenes.Events.SHUTDOWN, this._onShutdown, this);
+        this.game?.events?.off('destroy', this._onShutdown, this);
+
         // Invalidate every promise/import that was started by this scene before
         // releasing any world resource. A relaunch receives a fresh generation.
         this._lifecycleGeneration += 1;

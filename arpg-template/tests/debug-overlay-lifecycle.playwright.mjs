@@ -115,14 +115,28 @@ async function main() {
         assert(pageErrors.length === 0, `Runtime page errors before teardown: ${pageErrors.join(' | ')}`);
         console.log('[PASS] debug overlay reports live runtime values:', JSON.stringify(live));
 
-        const teardown = await page.evaluate(() => {
+        const beforeDestroy = await page.evaluate(() => {
             const exposedDispose = window.__three?.debugOverlay?.dispose;
             const before = window.__pat16TimerTracker.snapshot();
+            window.__pat16CapturedDispose = exposedDispose;
+            window.__game.destroy(false);
+            return {
+                disposerExposed: typeof exposedDispose === 'function',
+                before,
+            };
+        });
 
-            // Exercise the production unload path first, then call the captured
-            // disposer and unload path again to prove disposal is idempotent.
-            window.dispatchEvent(new Event('beforeunload'));
-            const afterUnload = window.__pat16TimerTracker.snapshot();
+        await page.waitForFunction(() => (
+            window.__game?.pendingDestroy === false
+            && window.__pat16TimerTracker?.snapshot()?.active === 0
+        ), null, { timeout: 5000 });
+
+        const teardown = await page.evaluate(() => {
+            const exposedDispose = window.__pat16CapturedDispose;
+
+            // Game destruction is the public Phaser teardown path. Repeat the
+            // captured disposer and unload afterward to prove idempotence.
+            const afterDestroy = window.__pat16TimerTracker.snapshot();
             exposedDispose?.();
             exposedDispose?.();
             window.dispatchEvent(new Event('beforeunload'));
@@ -131,17 +145,23 @@ async function main() {
                 disposerExposed: typeof exposedDispose === 'function',
                 hookCleared: window.__three?.debugOverlay === undefined,
                 overlayHidden: document.getElementById('debug-overlay')?.style.display === 'none',
-                before,
-                afterUnload,
+                world: { ...window.__three.world.stats },
+                rendererReleased: window.__three.world.renderer === null,
+                rootReleased: window.__three.world.root === null,
+                afterDestroy,
                 afterRepeatedDispose: window.__pat16TimerTracker.snapshot(),
             };
         });
 
-        assert(teardown.afterUnload.clearCalls === 1,
-            `Unload clear calls=${teardown.afterUnload.clearCalls}, expected exactly 1`);
-        assert(teardown.afterUnload.active === 0,
-            `Unload left ${teardown.afterUnload.active} debug interval(s) active`);
-        assert(teardown.disposerExposed, 'Debug lifecycle disposer seam was not exposed under window.__three');
+        assert(beforeDestroy.disposerExposed, 'Debug lifecycle disposer seam was not exposed under window.__three');
+        assert(teardown.afterDestroy.clearCalls === 1,
+            `Game destroy clear calls=${teardown.afterDestroy.clearCalls}, expected exactly 1`);
+        assert(teardown.afterDestroy.active === 0,
+            `Game destroy left ${teardown.afterDestroy.active} debug interval(s) active`);
+        assert(teardown.world.running === false && teardown.world.disposed === true,
+            `Game destroy left ThreeWorld running: ${JSON.stringify(teardown.world)}`);
+        assert(teardown.rendererReleased && teardown.rootReleased,
+            `Game destroy retained ThreeWorld resources: ${JSON.stringify(teardown)}`);
         assert(teardown.afterRepeatedDispose.clearCalls === 1,
             `Repeated dispose clear calls=${teardown.afterRepeatedDispose.clearCalls}, expected exactly 1`);
         assert(teardown.hookCleared, 'Debug disposer hook was not removed during disposal');
@@ -152,10 +172,11 @@ async function main() {
         assert(afterWait.active === 0, `Post-teardown wait found ${afterWait.active} active interval(s)`);
         assert(afterWait.clearCalls === 1,
             `Post-teardown clear calls=${afterWait.clearCalls}, expected exactly 1`);
-        assert(afterWait.ticks === teardown.afterUnload.ticks,
-            `Debug callback count advanced after teardown: ${teardown.afterUnload.ticks} -> ${afterWait.ticks}`);
+        assert(afterWait.ticks === teardown.afterDestroy.ticks,
+            `Debug callback count advanced after teardown: ${teardown.afterDestroy.ticks} -> ${afterWait.ticks}`);
         assert(pageErrors.length === 0, `Runtime page errors: ${pageErrors.join(' | ')}`);
-        console.log('[PASS] unload/disposer cleared timer exactly once and stopped future callbacks:', JSON.stringify({
+        console.log('[PASS] game destroy disposed world and cleared timer exactly once:', JSON.stringify({
+            beforeDestroy,
             teardown,
             afterWait,
         }));
