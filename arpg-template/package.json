@@ -10,6 +10,7 @@
     "test:sword-axes": "node tests/sword-axes.test.mjs",
     "test:threeworld-reboot": "node tests/threeworld-reboot.test.mjs",
     "test:threeworld-relaunch": "node tests/threeworld-relaunch.playwright.mjs",
+    "test:threeoverlay-lifecycle": "node tests/threeoverlay-scene-lifecycle.playwright.mjs",
     "capture:screenshot": "node scripts/capture-sword-screenshot.mjs"
   },
   "dependencies": {

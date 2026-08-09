@@ -31,6 +31,7 @@ const cache = new Map();      // url → THREE.Group (clone-safe)
  * @returns {Promise<THREE.Group>}
  */
 export async function loadModel(url, spec = {}, options = {}) {
+    const emitEvents = options.emitEvents !== false;
     if (cache.has(url)) {
         // Clone so each consumer can position/rotate independently.
         return cache.get(url).clone(true);
@@ -45,27 +46,29 @@ export async function loadModel(url, spec = {}, options = {}) {
         try {
             mod = await import(/* @vite-ignore */ url);
         } catch (err) {
-            ThreeBridge.emit('model-load-fail', { url, error: err });
+            if (emitEvents) ThreeBridge.emit('model-load-fail', { url, error: err });
             throw err;
         }
         const factory = mod.default ?? mod.createXxxModel ?? mod.createModel;
         if (typeof factory !== 'function') {
             const err = new Error(`Model factory at ${url} did not export a function`);
-            ThreeBridge.emit('model-load-fail', { url, error: err });
+            if (emitEvents) ThreeBridge.emit('model-load-fail', { url, error: err });
             throw err;
         }
         const group = factory(spec, options);
         if (!group || !(group.isObject3D)) {
             const err = new Error(`Model factory at ${url} returned non-Object3D`);
-            ThreeBridge.emit('model-load-fail', { url, error: err });
+            if (emitEvents) ThreeBridge.emit('model-load-fail', { url, error: err });
             throw err;
         }
         cache.set(url, group);
-        ThreeBridge.emit('model-loaded', {
-            url,
-            group,
-            took: performance.now() - started,
-        });
+        if (emitEvents) {
+            ThreeBridge.emit('model-loaded', {
+                url,
+                group,
+                took: performance.now() - started,
+            });
+        }
         // Auto-add to the world unless the caller asked to manage placement.
         if (options.addToWorld !== false) {
             threeWorld.add(group);

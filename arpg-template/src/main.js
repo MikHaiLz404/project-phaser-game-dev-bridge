@@ -49,7 +49,7 @@ if (typeof window !== 'undefined' && new URLSearchParams(window.location.search)
         const sceneEl = document.getElementById('dbg-scene');
         setInterval(() => {
             fpsEl.textContent = String(Math.round(game.loop.actualFps));
-            objEl.textContent = String(threeWorld?.stats?.objects ?? 0);
+            objEl.textContent = String(window.__three?.world?.stats?.objects ?? 0);
             const active = game.scene.getScenes(true)[0];
             sceneEl.textContent = active?.scene?.key ?? '--';
         }, 250);
