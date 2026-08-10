@@ -9,7 +9,7 @@
  *   • setState('idle' | 'walk' | 'run' | 'attack')  — drives procedural animation
  *   • update(dt)                                     — call each frame to animate
  *
- * Attack animation: the project weapon arm (armL) swings forward and down in an arc
+ * Attack animation: the project weapon arm (armR) swings forward and down in an arc
  * over `attackDuration` seconds. The 'active' window (mid-swing, when a
  * hitbox would be live) is `attackActiveFraction` of the total. When the
  * animation ends the state returns to 'idle' — caller is expected to set
@@ -53,7 +53,7 @@ export default function createCharacter(spec = {}) {
     let attackDuration = spec.attackDuration ?? 0.55;   // seconds, full swing (overhead slash)
     const attackActiveFraction = 0.50;                  // active window at swing midpoint
     // Position where a melee hitbox would live — relative to root.
-    // The active window fires when armL crosses y=0 axis at this x/z offset.
+    // The active window fires when armR crosses y=0 axis at this x/z offset.
     // This character's explicit local forward contract is +Z, so the hit
     // origin sits in front of the body.
     const attackHitOffset = { x: 0, y: 1.0, z: 0.5 };
@@ -170,11 +170,11 @@ export default function createCharacter(spec = {}) {
     // Arms (boxes) — pivots at shoulder (top of arm)
     const armGeom = new THREE.BoxGeometry(0.14, 0.55, 0.14);
 
-    // Project-authored side convention: armL is physical local +X and owns
-    // the weapon; armR is local -X. Do not derive these names from anatomy.
+    // Project-authored side convention: armL is physical local +X and armR
+    // is local -X. armR owns the weapon; do not derive names from anatomy.
     const armL = new THREE.Group();
     armL.name = 'armL';
-    armL.position.set(0.32, 1.1, 0);  // project armL / weapon shoulder
+    armL.position.set(0.32, 1.1, 0);  // project armL / non-weapon shoulder
     const armLMesh = new THREE.Mesh(armGeom, matShirt);
     armLMesh.position.y = -0.275;  // mesh hangs below pivot
     armLMesh.castShadow = true;
@@ -183,7 +183,7 @@ export default function createCharacter(spec = {}) {
 
     const armR = new THREE.Group();
     armR.name = 'armR';
-    armR.position.set(-0.32, 1.1, 0);  // project armR / non-weapon shoulder
+    armR.position.set(-0.32, 1.1, 0);  // project armR / weapon shoulder
     const armRMesh = new THREE.Mesh(armGeom, matShirt);
     armRMesh.position.y = -0.275;
     armRMesh.castShadow = true;
@@ -227,22 +227,9 @@ export default function createCharacter(spec = {}) {
     root.scale.setScalar(scale);
 
     // -----------------------------------------------------------------
-    // Project weapon — a low-poly sword that attaches to the wrist of armL,
-    // with per-frame counter-rotation so it always points in an intuitive
-    // direction regardless of armL rotation.
-    //
-    // Why a counter-rotation: armL.rotation.x drives the swing. As that
-    // value grows past 90°, the local +Y axis of armL sweeps PAST the
-    // character's body. If we mounted the sword with its blade pointing
-    // along armL's local +Y, it would flip to point DOWNWARD when the arm
-    // swings overhead — the exact opposite of what an overhead slash wants.
-    //
-    // Instead, the sword lives in its own `swordPivot` group attached to
-    // armL at the wrist. Each frame we orient the pivot so its local +Y
-    // points at the character's facing +Z (toward the camera/front). The
-    // sword's blade extends along that axis. Result: the sword always
-    // presents as "held forward" regardless of how the arm rotates, while
-    // the wrist tracking still gives it natural motion.
+    // Project weapon — a low-poly sword rigidly attached to the armR wrist.
+    // Parenting carries the wrist's complete transform hierarchy (position,
+    // quaternion, and scale) into the sword without per-frame correction.
     //
     // Dimensions:
     //   hilt    0.20 long — grip (cylinder)
@@ -266,16 +253,16 @@ export default function createCharacter(spec = {}) {
     // the sword meshes. Set to false to skip — useful for NPCs that
     // shouldn't be visibly carrying a sword.
     //
-    // We still ALWAYS create the empty swordPivot group on root (so the
-    // player-controller wrist-tracking code can find it without checking
-    // for null) — just skip the meshes inside.
+    // We still ALWAYS create the empty armR-owned swordPivot group so callers
+    // can find the stable attachment without checking for null.
     const equipSword = spec.equipSword !== false;
 
-    // swordPivot — see the big comment block earlier for why this lives
-    // on root and not on armL.
+    // Stable wrist bind: direct armR parenting provides full-transform
+    // inheritance, while the local translation places the grip at the wrist.
     const swordPivot = new THREE.Group();
     swordPivot.name = 'swordPivot';
-    root.add(swordPivot);
+    swordPivot.position.set(0, -0.55, 0);
+    armR.add(swordPivot);
 
     // Sword mesh group — null when equipSword is false (NPCs).
     let sword = null;
@@ -301,10 +288,8 @@ export default function createCharacter(spec = {}) {
         // Total length ≈ 1.05 — slightly over half the character's height,
         // reads as a 'long sword' from any camera distance.
         //
-        // Note: in Worldspace, +Z = forward when the player faces away from the
-        // camera (character's local +Z); if the player rotates 180°, the local
-        // rotation.y update we apply below keeps the blade pointing in the new
-        // forward direction automatically.
+        // Character-local +Z is forward. The armR → swordPivot hierarchy
+        // carries facing and attack rotation into this sword-local axis.
         const pommel = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), matPommel);
         pommel.position.set(0, 0, -0.16);
         pommel.castShadow = true;
@@ -346,9 +331,6 @@ export default function createCharacter(spec = {}) {
         swordPivot.add(sword);
     }
 
-    // Reusable vector (always declared — wrist tracking uses it regardless
-    // of whether the sword meshes exist).
-    const swordTrack = new THREE.Vector3();
 
     // -----------------------------------------------------------------
     // Animation state
@@ -444,16 +426,16 @@ export default function createCharacter(spec = {}) {
             // Overhead-slash swing: arm lifts the sword ABOVE the head, then
             // brings it down in a powerful arc, then returns to rest.
             //
-            //   windup   (0..0.30)  — armL.x sweeps from 0 → -2.6 rad
+            //   windup   (0..0.30)  — armR.x sweeps from 0 → -2.6 rad
             //                         ≈ arm rotated ~150° backward, sword
             //                         ends up overhead.
-            //   active   (0.30..0.65) — armL.x slashes from -2.6 → +1.0 rad.
+            //   active   (0.30..0.65) — armR.x slashes from -2.6 → +1.0 rad.
             //                         Sword arcs OVERHEAD then DOWN through
             //                         the front of the body. Hits between
             //                         t=0.45–0.55 (mid-swing).
-            //   recovery (0.65..1.0) — armL.x returns to 0 + armL.z decays.
+            //   recovery (0.65..1.0) — armR.x returns to 0 + armR.z decays.
             //
-            // armL.z adds a subtle outward elbow flare so the arc looks like
+            // armR.z adds a subtle outward elbow flare so the arc looks like
             // it actually swings "around" the body rather than sliding in
             // a flat plane.
             const t = Math.min(1, animTime / attackDuration);
@@ -478,14 +460,14 @@ export default function createCharacter(spec = {}) {
                 swingX = 1.0 * (1 - w);
                 elbowZ = 0.1 * (1 - w);
             }
-            armL.rotation.x = swingX;
-            armL.rotation.z = elbowZ;
+            armR.rotation.x = swingX;
+            armR.rotation.z = elbowZ;
 
-            // Non-weapon armR stays in its phase-aligned IDLE pose during the
+            // Non-weapon armL stays in its phase-aligned IDLE pose during the
             // swing. One limb moves with purpose while the other anchors the
-            // silhouette and preserves the old physical -X-arm behavior.
-            armR.rotation.x = Math.sin(animTime * 0.8) * 0.03;
-            armR.rotation.z = 0;
+            // silhouette and preserves the authored physical +X-arm behavior.
+            armL.rotation.x = -Math.sin(animTime * 0.8) * 0.03;
+            armL.rotation.z = 0;
 
             // Torso twist — small lean into the swing at the active midpoint
             const lean = Math.sin(t * Math.PI) * 0.15;
@@ -538,34 +520,6 @@ export default function createCharacter(spec = {}) {
         armL.position.y = baseY.armL + bobAmount;
         armR.position.y = baseY.armR + bobAmount;
 
-        // -----------------------------------------------------------------
-        // Track the weapon wrist so the swordPivot follows wherever armL ends
-        // up while the player swings.
-        //
-        // swordPivot lives on root, so its position is in ROOT-LOCAL space.
-        // We transform the wrist local position (0,-0.55,0 in armL space)
-        // through armL.matrixWorld, then undo root's transform via
-        // root.matrixWorld.invert() to get back into root-local coordinates.
-        //
-        // Critical: the player's facing rotation (root.rotation.y = facingYaw)
-        // is applied to the pivot INTERNALLY because it's a child of root.
-        // So if the player turns 180° the pivot's transform auto-orients with
-        // them — the blade still points in the new forward direction.
-        //
-        // Two stage update:
-        //   1) root.updateMatrixWorld() to push the parent's world matrix
-        //      through the chain so armL.matrixWorld is fresh
-        //   2) invert root.matrixWorld so we can convert wrist back to local
-        // -----------------------------------------------------------------
-        root.updateMatrixWorld(true);   // parent-to-child chain
-        swordTrack.set(0, -0.55, 0).applyMatrix4(armL.matrixWorld);
-        // Convert world → root-local by undoing root.matrixWorld
-        const rootInv = root.matrixWorld.clone().invert();
-        swordTrack.applyMatrix4(rootInv);
-        swordPivot.position.copy(swordTrack);
-        // Keep pivot rotation zero so it inherits root's facing rotation
-        // purely from the parent chain (no fighting the inheritance).
-        swordPivot.rotation.set(0, 0, 0);
     }
 
     root.userData = {

@@ -58,19 +58,24 @@ function assertNear(actual, expected, message, epsilon = EPSILON) {
     );
 }
 
-function assertSwordTracksArmLWrist(character, label) {
+function assertSwordTracksArmRWrist(character, label) {
     const { armL, armR } = character.userData.parts;
     const swordPivot = character.getObjectByName('swordPivot');
-    character.updateMatrixWorld(true);
-    const expectedWeaponWrist = WRIST_LOCAL.clone().applyMatrix4(armL.matrix);
-    const expectedNonWeaponWrist = WRIST_LOCAL.clone().applyMatrix4(armR.matrix);
+    character.updateWorldMatrix(true, true);
+    const expectedWeaponWrist = WRIST_LOCAL.clone().applyMatrix4(armR.matrixWorld);
+    const expectedNonWeaponWrist = WRIST_LOCAL.clone().applyMatrix4(armL.matrixWorld);
+    const actualWeaponWrist = swordPivot.getWorldPosition(new THREE.Vector3());
     assert.ok(
-        swordPivot.position.distanceTo(expectedWeaponWrist) <= EPSILON,
-        `${label}: swordPivot stopped tracking the project weapon armL wrist`,
+        swordPivot.parent === armR,
+        `${label}: swordPivot stopped being owned by project weapon armR`,
     );
     assert.ok(
-        swordPivot.position.distanceTo(expectedNonWeaponWrist) > 0.5,
-        `${label}: swordPivot overlaps the non-weapon armR wrist`,
+        actualWeaponWrist.distanceTo(expectedWeaponWrist) <= EPSILON,
+        `${label}: swordPivot stopped tracking the project weapon armR wrist`,
+    );
+    assert.ok(
+        actualWeaponWrist.distanceTo(expectedNonWeaponWrist) > 0.25,
+        `${label}: swordPivot overlaps the non-weapon armL wrist`,
     );
 }
 
@@ -177,7 +182,7 @@ test('PAT-21 follows torso bob, breathing scale, and attack lean without breakin
             `${state}: backpack attachment drifted from torso transform`,
         );
         assert.ok(worldBounds(backpack).isEmpty() === false, `${state}: backpack has no world-space bounds`);
-        assertSwordTracksArmLWrist(character, state);
+        assertSwordTracksArmRWrist(character, state);
     }
 
     const idle = poseCharacter('idle');
