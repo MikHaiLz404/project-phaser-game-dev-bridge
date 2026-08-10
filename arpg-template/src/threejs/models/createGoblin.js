@@ -117,6 +117,7 @@ export default function createGoblins(opts = {}) {
             // State transitions
             if (distToPlayer < sightRadius) {
                 state.state = 'chase';
+                state.idleUntil = 0;
             } else if (state.state === 'chase' && distToPlayer > loseRadius) {
                 state.state = 'return';
                 state.returningTo.copy(state.home);

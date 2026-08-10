@@ -53,6 +53,7 @@ try {
     playerRef.position.set(5, -1, 0);
     controller.update(0.5);
     assert.equal(goblin.state, 'chase', 'nearby player should interrupt patrol idle immediately');
+    assert.equal(goblin.idleUntil, 0, 'chase transition must cancel the patrol idle timer');
     assert.ok(goblin.mesh.position.x > idlePosition.x, 'goblin did not move when chase interrupted idle');
 
     // Losing the player returns the goblin home, then restores patrol.
@@ -63,23 +64,19 @@ try {
     }
     assert.equal(goblin.state, 'patrol', 'goblin did not return to patrol after losing the player');
 
-    // The retained pause remains authoritative after return, then the goblin
-    // advances across the patrol plane toward the waypoint selected when the pause began.
-    nowSeconds = goblin.idleUntil - 0.01;
-    const beforeExpiry = goblin.mesh.position.clone();
-    controller.update(0.01);
-    assert.equal(goblin.mesh.position.x, beforeExpiry.x, 'goblin moved before retained idle expired');
-    assert.equal(goblin.mesh.position.z, beforeExpiry.z, 'goblin moved before retained idle expired');
-
-    nowSeconds = goblin.idleUntil + 0.01;
+    // Chase cancelled the old pause, so patrol resumes immediately toward the
+    // waypoint selected before the chase instead of reviving a stale timer.
+    assert.equal(goblin.idleUntil, 0, 'return to patrol must not restore the cancelled idle timer');
+    const resumedPosition = goblin.mesh.position.clone();
+    nowSeconds += 0.1;
     controller.update(0.1);
     const planarDistance = Math.hypot(
-        goblin.mesh.position.x - beforeExpiry.x,
-        goblin.mesh.position.z - beforeExpiry.z,
+        goblin.mesh.position.x - resumedPosition.x,
+        goblin.mesh.position.z - resumedPosition.z,
     );
     assert.ok(
         planarDistance > 0,
-        'goblin did not advance toward the next waypoint after idle expired',
+        'goblin did not resume patrol toward the next waypoint after returning home',
     );
 
     console.log('PASS — PAT-18 goblin patrol waypoint idle lifecycle');
