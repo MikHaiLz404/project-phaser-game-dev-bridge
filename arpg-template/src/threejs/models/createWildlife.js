@@ -90,7 +90,6 @@ export default function createWildlife(opts = {}) {
             -1,
             rand(bounds.minZ, bounds.maxZ),
         );
-        state.idleUntil = 0;
     }
 
     function respawn(state, now) {
