@@ -74,7 +74,6 @@ export default function createGoblins(opts = {}) {
             -1,
             rand(bounds.minZ, bounds.maxZ),
         );
-        state.idleUntil = 0;
     }
 
     function walkToward(state, dest, speed, dt) {
