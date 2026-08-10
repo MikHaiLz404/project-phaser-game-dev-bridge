@@ -106,19 +106,10 @@ export default function createCharacter(spec = {}) {
 
     const armR = new THREE.Group();
     armR.name = 'armR';
-    // The dominant in-game camera (ThreeWorld.js) looks from +Z toward -Z,
-    // so the player appears with their BACK to the viewer by default (spawn
-    // at world z=-12, camera at world z=+32). In that orientation, the
-    // viewer's RIGHT side maps to the character's LEFT side — meaning a
-    // sword on character-local +X arm appears on the viewer's LEFT, which
-    // reads as "they're holding it backwards".
-    //
-    // Conventional third-person ARPG UX favors having the sword on the
-    // viewer's right (so it's not culled by the player body silhouette).
-    // We mirror the arm positions: armR is at character-local -X (left
-    // side of the body) but visually presents on the viewer's RIGHT due
-    // to the default camera orientation.
-    armR.position.set(-0.32, 1.1, 0);
+    // Preserve anatomical local-space sides regardless of camera presentation.
+    // This keeps both shoulder anchors separated and lets the right-hand weapon
+    // track the semantic right arm without overlapping the left shoulder.
+    armR.position.set(0.32, 1.1, 0);
     const armRMesh = new THREE.Mesh(armGeom, matShirt);
     armRMesh.position.y = -0.275;
     armRMesh.castShadow = true;
