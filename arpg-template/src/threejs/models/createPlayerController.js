@@ -465,7 +465,11 @@ export default function createPlayerController(opts = {}) {
     // -----------------------------------------------------------------
     // Cleanup
     // -----------------------------------------------------------------
+    let disposed = false;
     function dispose() {
+        if (disposed) return;
+        disposed = true;
+
         window.removeEventListener('keydown', onKeyDown);
         window.removeEventListener('keyup', onKeyUp);
         if (domElement) {
@@ -475,6 +479,28 @@ export default function createPlayerController(opts = {}) {
             domElement.removeEventListener('wheel', onWheel);
             domElement.removeEventListener('contextmenu', onContextMenu);
         }
+
+        // The controller removes `player` before ThreeWorld's scene traversal,
+        // so it also owns every render resource below that detached root. Gather
+        // by object identity first to handle shared geometries/materials and
+        // material arrays without double-disposal.
+        const geometries = new Set();
+        const materials = new Set();
+        player.traverse((object) => {
+            if (object.geometry?.dispose) geometries.add(object.geometry);
+            const objectMaterials = Array.isArray(object.material)
+                ? object.material
+                : [object.material];
+            for (const material of objectMaterials) {
+                if (material?.dispose) materials.add(material);
+            }
+        });
+        for (const geometry of geometries) geometry.dispose();
+        for (const material of materials) material.dispose();
+
+        player.userData.setOnAttackActive?.(null);
+        onAttackStartListeners.clear();
+        onAttackActiveListeners.clear();
         if (scene) scene.remove(player);
     }
 

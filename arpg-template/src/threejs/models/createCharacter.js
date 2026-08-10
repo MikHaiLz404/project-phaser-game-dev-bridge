@@ -66,6 +66,21 @@ export default function createCharacter(spec = {}) {
     const matPants = new THREE.MeshStandardMaterial({ color: pants, roughness: 0.9 });
     const matHair = new THREE.MeshStandardMaterial({ color: hair, roughness: 0.95 });
     const matShoes = new THREE.MeshStandardMaterial({ color: shoes, roughness: 0.95 });
+    const matBackpackBody = new THREE.MeshStandardMaterial({
+        color: 0x6f4728,
+        roughness: 0.92,
+        flatShading: true,
+    });
+    const matBackpackFlap = new THREE.MeshStandardMaterial({
+        color: 0x4b2f1d,
+        roughness: 0.9,
+        flatShading: true,
+    });
+    const matBackpackStrap = new THREE.MeshStandardMaterial({
+        color: 0x956238,
+        roughness: 0.88,
+        flatShading: true,
+    });
 
     // -----------------------------------------------------------------
     // Body parts (units: meters, y=0 ground)
@@ -76,6 +91,67 @@ export default function createCharacter(spec = {}) {
     torso.castShadow = true;
     torso.name = 'torso';
     root.add(torso);
+
+    // Backpack — torso-owned so breathing, locomotion bob, and attack lean
+    // propagate through the normal scene graph without a second animation
+    // path. Character forward is local +Z, therefore every visible pack
+    // surface stays beyond the torso's local back face at z=-0.14.
+    const backpack = new THREE.Group();
+    backpack.name = 'backpack';
+    backpack.position.set(0, -0.02, -0.31);
+
+    // An octagonal cylinder gives the canvas pack a rounded low-poly
+    // silhouette and real depth instead of reading as a flat chest panel.
+    const backpackBody = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18, 0.21, 0.44, 8),
+        matBackpackBody,
+    );
+    backpackBody.name = 'backpackBody';
+    backpackBody.position.set(0, -0.02, 0);
+    backpackBody.scale.z = 0.45;
+    backpackBody.castShadow = true;
+    backpack.add(backpackBody);
+
+    // The darker top flap and raised leather straps layer on the rear-facing
+    // surface, making the pack readable from the gameplay rear camera.
+    const backpackFlap = new THREE.Mesh(
+        new THREE.BoxGeometry(0.38, 0.14, 0.055),
+        matBackpackFlap,
+    );
+    backpackFlap.name = 'backpackFlap';
+    backpackFlap.position.set(0, 0.14, -0.115);
+    backpackFlap.castShadow = true;
+    backpack.add(backpackFlap);
+
+    // Shoulder straps follow a low-poly tube path: each starts on the pack's
+    // rear face, climbs above the flap, then bends forward and outward toward
+    // its anatomical shoulder. The forward endpoint remains behind the torso
+    // back plane, so the wrap is visible from rear/oblique views without ever
+    // rendering on the chest side.
+    function createBackpackStrap(side, name) {
+        const curve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(0, -0.17, -0.125),
+            new THREE.Vector3(0, 0.03, -0.12),
+            new THREE.Vector3(side * 0.02, 0.18, -0.06),
+            new THREE.Vector3(side * 0.05, 0.29, 0.10),
+        ]);
+        const strap = new THREE.Mesh(
+            new THREE.TubeGeometry(curve, 6, 0.025, 4, false),
+            matBackpackStrap,
+        );
+        strap.name = name;
+        strap.position.x = side * 0.13;
+        strap.castShadow = true;
+        return strap;
+    }
+
+    const backpackStrapL = createBackpackStrap(-1, 'backpackStrapL');
+    backpack.add(backpackStrapL);
+
+    const backpackStrapR = createBackpackStrap(1, 'backpackStrapR');
+    backpack.add(backpackStrapR);
+
+    torso.add(backpack);
 
     // Head (sphere) — sits on top of torso
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 10), matSkin);
@@ -500,7 +576,23 @@ export default function createCharacter(spec = {}) {
         setSwingReturn,
         update,
         getState: () => state,
-        parts: { torso, head, hairCap, armL, armR, legL, legR, shoeL, shoeR, sword },
+        parts: {
+            torso,
+            head,
+            hairCap,
+            armL,
+            armR,
+            legL,
+            legR,
+            shoeL,
+            shoeR,
+            sword,
+            backpack,
+            backpackBody,
+            backpackFlap,
+            backpackStrapL,
+            backpackStrapR,
+        },
         // Attack metadata — exposed for hitbox / Phase 4 subscribers
         attack: {
             duration: attackDuration,
