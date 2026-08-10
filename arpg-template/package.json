@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "test:sword-axes": "node tests/sword-axes.test.mjs",
     "test:goblin-patrol": "node tests/goblin-patrol-idle.test.mjs",
+    "test:wildlife-animation-clock": "node --test tests/wildlife-animation-clock.test.mjs",
     "test:threeworld-reboot": "node tests/threeworld-reboot.test.mjs",
     "test:threeworld-relaunch": "node tests/threeworld-relaunch.playwright.mjs",
     "test:threeoverlay-lifecycle": "node tests/threeoverlay-scene-lifecycle.playwright.mjs",
@@ -22,6 +23,7 @@
     "test:pat15": "node --test tests/data-schema.test.mjs tests/inventory-manager.test.mjs && node tests/combat-data-runtime.playwright.mjs",
     "test:model-preview": "node tests/bundled-model-production-preview.playwright.mjs",
     "test:pat13-ui-scene": "node tests/pat13-ui-scene-key.playwright.mjs",
+    "test:wildlife-waypoint-idle": "node --test tests/wildlife-waypoint-idle.test.mjs",
     "capture:screenshot": "node scripts/capture-sword-screenshot.mjs"
   },
   "dependencies": {
