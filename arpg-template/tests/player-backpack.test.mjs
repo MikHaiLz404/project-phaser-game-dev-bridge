@@ -58,19 +58,19 @@ function assertNear(actual, expected, message, epsilon = EPSILON) {
     );
 }
 
-function assertSwordTracksRightWrist(character, label) {
+function assertSwordTracksArmLWrist(character, label) {
     const { armL, armR } = character.userData.parts;
     const swordPivot = character.getObjectByName('swordPivot');
     character.updateMatrixWorld(true);
-    const expectedRight = WRIST_LOCAL.clone().applyMatrix4(armR.matrix);
-    const expectedLeft = WRIST_LOCAL.clone().applyMatrix4(armL.matrix);
+    const expectedWeaponWrist = WRIST_LOCAL.clone().applyMatrix4(armL.matrix);
+    const expectedNonWeaponWrist = WRIST_LOCAL.clone().applyMatrix4(armR.matrix);
     assert.ok(
-        swordPivot.position.distanceTo(expectedRight) <= EPSILON,
-        `${label}: swordPivot stopped tracking the semantic right wrist`,
+        swordPivot.position.distanceTo(expectedWeaponWrist) <= EPSILON,
+        `${label}: swordPivot stopped tracking the project weapon armL wrist`,
     );
     assert.ok(
-        swordPivot.position.distanceTo(expectedLeft) > 0.5,
-        `${label}: swordPivot overlaps the left wrist`,
+        swordPivot.position.distanceTo(expectedNonWeaponWrist) > 0.5,
+        `${label}: swordPivot overlaps the non-weapon armR wrist`,
     );
 }
 
@@ -129,9 +129,11 @@ test('PAT-21 centers the pack, mirrors the straps, and stays inside the neutral 
     const bounds = rootLocalBounds(backpack, character);
     const torsoWidth = torso.geometry.parameters.width;
     const packWidth = bounds.max.x - bounds.min.x;
+    const shoulderMinX = Math.min(armL.position.x, armR.position.x);
+    const shoulderMaxX = Math.max(armL.position.x, armR.position.x);
     assert.ok(packWidth <= torsoWidth + EPSILON, `pack width ${packWidth} exceeds torso width ${torsoWidth}`);
-    assert.ok(bounds.min.x > armL.position.x + 0.07, 'pack overlaps the neutral left arm envelope');
-    assert.ok(bounds.max.x < armR.position.x - 0.07, 'pack overlaps the neutral right arm envelope');
+    assert.ok(bounds.min.x > shoulderMinX + 0.07, 'pack overlaps the neutral negative-X arm envelope');
+    assert.ok(bounds.max.x < shoulderMaxX - 0.07, 'pack overlaps the neutral positive-X arm envelope');
 });
 
 test('PAT-21 shoulder straps climb from the pack and wrap toward both shoulder regions', () => {
@@ -175,7 +177,7 @@ test('PAT-21 follows torso bob, breathing scale, and attack lean without breakin
             `${state}: backpack attachment drifted from torso transform`,
         );
         assert.ok(worldBounds(backpack).isEmpty() === false, `${state}: backpack has no world-space bounds`);
-        assertSwordTracksRightWrist(character, state);
+        assertSwordTracksArmLWrist(character, state);
     }
 
     const idle = poseCharacter('idle');
