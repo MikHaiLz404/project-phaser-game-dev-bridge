@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:sword-axes": "node tests/sword-axes.test.mjs",
+    "test:goblin-patrol": "node tests/goblin-patrol-idle.test.mjs",
     "test:wildlife-animation-clock": "node --test tests/wildlife-animation-clock.test.mjs",
     "test:threeworld-reboot": "node tests/threeworld-reboot.test.mjs",
     "test:threeworld-relaunch": "node tests/threeworld-relaunch.playwright.mjs",
