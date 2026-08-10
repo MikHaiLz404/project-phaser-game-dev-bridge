@@ -134,6 +134,35 @@ test('PAT-21 centers the pack, mirrors the straps, and stays inside the neutral 
     assert.ok(bounds.max.x < armR.position.x - 0.07, 'pack overlaps the neutral right arm envelope');
 });
 
+test('PAT-21 shoulder straps climb from the pack and wrap toward both shoulder regions', () => {
+    const character = createCharacter();
+    const { armL, armR } = character.userData.parts;
+    const { backpackStrapL, backpackStrapR } = readBackpack(character);
+
+    for (const [strap, shoulder] of [
+        [backpackStrapL, armL],
+        [backpackStrapR, armR],
+    ]) {
+        const bounds = rootLocalBounds(strap, character);
+        const shoulderGap = shoulder.position.y - bounds.max.y;
+        const backPlaneGap = TORSO_BACK_Z - bounds.max.z;
+        const forwardTravel = bounds.max.z - bounds.min.z;
+
+        assert.ok(
+            bounds.max.y >= shoulder.position.y,
+            `${strap.name}: top stops ${shoulderGap} below shoulder y=${shoulder.position.y}`,
+        );
+        assert.ok(
+            backPlaneGap <= 0.06,
+            `${strap.name}: nearest point remains ${backPlaneGap} behind torso instead of wrapping toward it`,
+        );
+        assert.ok(
+            forwardTravel >= 0.2,
+            `${strap.name}: z travel ${forwardTravel} reads as a rear-face band, not a shoulder path`,
+        );
+    }
+});
+
 test('PAT-21 follows torso bob, breathing scale, and attack lean without breaking sword tracking', () => {
     for (const state of ['idle', 'walk', 'run', 'attack']) {
         const character = poseCharacter(state);

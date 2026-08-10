@@ -123,17 +123,32 @@ export default function createCharacter(spec = {}) {
     backpackFlap.castShadow = true;
     backpack.add(backpackFlap);
 
-    const backpackStrapGeometry = new THREE.BoxGeometry(0.052, 0.32, 0.036);
-    const backpackStrapL = new THREE.Mesh(backpackStrapGeometry, matBackpackStrap);
-    backpackStrapL.name = 'backpackStrapL';
-    backpackStrapL.position.set(-0.13, -0.02, -0.125);
-    backpackStrapL.castShadow = true;
+    // Shoulder straps follow a low-poly tube path: each starts on the pack's
+    // rear face, climbs above the flap, then bends forward and outward toward
+    // its anatomical shoulder. The forward endpoint remains behind the torso
+    // back plane, so the wrap is visible from rear/oblique views without ever
+    // rendering on the chest side.
+    function createBackpackStrap(side, name) {
+        const curve = new THREE.CatmullRomCurve3([
+            new THREE.Vector3(0, -0.17, -0.125),
+            new THREE.Vector3(0, 0.03, -0.12),
+            new THREE.Vector3(side * 0.02, 0.18, -0.06),
+            new THREE.Vector3(side * 0.05, 0.29, 0.10),
+        ]);
+        const strap = new THREE.Mesh(
+            new THREE.TubeGeometry(curve, 6, 0.025, 4, false),
+            matBackpackStrap,
+        );
+        strap.name = name;
+        strap.position.x = side * 0.13;
+        strap.castShadow = true;
+        return strap;
+    }
+
+    const backpackStrapL = createBackpackStrap(-1, 'backpackStrapL');
     backpack.add(backpackStrapL);
 
-    const backpackStrapR = new THREE.Mesh(backpackStrapGeometry, matBackpackStrap);
-    backpackStrapR.name = 'backpackStrapR';
-    backpackStrapR.position.set(0.13, -0.02, -0.125);
-    backpackStrapR.castShadow = true;
+    const backpackStrapR = createBackpackStrap(1, 'backpackStrapR');
     backpack.add(backpackStrapR);
 
     torso.add(backpack);
