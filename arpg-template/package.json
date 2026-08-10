@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test:player-backpack": "node --test tests/player-backpack.test.mjs",
     "test:player-arm-sides": "node --test tests/player-arm-sides.test.mjs",
     "test:sword-axes": "node tests/sword-axes.test.mjs",
     "test:goblin-patrol": "node tests/goblin-patrol-idle.test.mjs",
