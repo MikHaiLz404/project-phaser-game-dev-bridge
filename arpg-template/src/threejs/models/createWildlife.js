@@ -115,7 +115,10 @@ export default function createWildlife(opts = {}) {
 
             // Respawn pending?
             if (state.respawnAt > 0) {
-                if (now >= state.respawnAt) respawn(state, now);
+                if (now >= state.respawnAt) {
+                    respawn(state, now);
+                    bobAnimal(mesh, state.species, false, state.facing);
+                }
                 return;
             }
 
@@ -154,7 +157,7 @@ export default function createWildlife(opts = {}) {
                 state.facing += delta * Math.min(1, dt * 6);
                 mesh.rotation.y = state.facing;
 
-                bobAnimal(mesh, state.species, true);
+                bobAnimal(mesh, state.species, true, state.facing);
                 return;
             }
 
@@ -164,11 +167,11 @@ export default function createWildlife(opts = {}) {
             const dist = Math.hypot(dx, dz);
 
             if (state.idleUntil > now) {
-                bobAnimal(mesh, state.species, false);
+                bobAnimal(mesh, state.species, false, state.facing);
             } else if (dist < waypointTolerance) {
                 state.idleUntil = now + rand(minIdleSeconds, maxIdleSeconds);
                 pickNewWaypoint(state);
-                bobAnimal(mesh, state.species, false);
+                bobAnimal(mesh, state.species, false, state.facing);
             } else {
                 const dirX = dx / dist;
                 const dirZ = dz / dist;
@@ -183,7 +186,7 @@ export default function createWildlife(opts = {}) {
                 state.facing += delta * Math.min(1, dt * 5);
                 mesh.rotation.y = state.facing;
 
-                bobAnimal(mesh, state.species, false);
+                bobAnimal(mesh, state.species, false, state.facing);
             }
         });
     }
@@ -193,7 +196,7 @@ export default function createWildlife(opts = {}) {
      * deer walk with a sway, squirrels scurry with a fast wiggle.
      */
     let _time = 0;
-    function bobAnimal(mesh, species, fleeing) {
+    function bobAnimal(mesh, species, fleeing, facing) {
         const t = _time;
         const speedMul = fleeing ? 2.2 : 1.0;
         if (species === 'rabbit') {
@@ -203,7 +206,7 @@ export default function createWildlife(opts = {}) {
             mesh.rotation.z = Math.sin(t * 4 * speedMul) * 0.03;
         } else {
             // squirrel — subtle wiggle
-            mesh.rotation.y += Math.sin(t * 10 * speedMul) * 0.01;
+            mesh.rotation.y = facing + Math.sin(t * 10 * speedMul) * 0.01;
         }
     }
 

@@ -117,3 +117,95 @@ test('fleeing intentionally applies the faster animation multiplier', () => {
         }
     });
 });
+
+test('respawned wildlife is visible at the current animation phase without a zero-time jump', () => {
+    const performanceDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'performance');
+    let nowSeconds = 100;
+
+    Object.defineProperty(globalThis, 'performance', {
+        configurable: true,
+        value: { now: () => nowSeconds * 1000 },
+    });
+
+    try {
+        withFixedRandom(0, () => {
+            const wildlife = createWildlife({ count: 1, bounds: FIXED_BOUNDS });
+            try {
+                const animal = wildlife.animals[0];
+                animal.mesh.position.x = animal.anchor.x + 19;
+
+                wildlife.update(0.1);
+                assert.equal(animal.mesh.visible, false, 'animal should enter pending respawn');
+
+                for (let frame = 0; frame < 141; frame += 1) {
+                    wildlife.update(0.016);
+                }
+
+                nowSeconds = animal.respawnAt;
+                wildlife.update(0);
+                assert.equal(animal.mesh.visible, true, 'animal should become visible when respawn is due');
+
+                const respawnPoseY = animal.mesh.position.y;
+                wildlife.update(0);
+                assertNear(
+                    animal.mesh.position.y,
+                    respawnPoseY,
+                    'zero-time update after respawn must preserve the visible pose',
+                );
+            } finally {
+                wildlife.dispose();
+            }
+        });
+    } finally {
+        if (performanceDescriptor) {
+            Object.defineProperty(globalThis, 'performance', performanceDescriptor);
+        } else {
+            delete globalThis.performance;
+        }
+    }
+});
+
+test('respawned squirrel does not accumulate wiggle on a zero-time update', () => {
+    const performanceDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'performance');
+    let nowSeconds = 100;
+
+    Object.defineProperty(globalThis, 'performance', {
+        configurable: true,
+        value: { now: () => nowSeconds * 1000 },
+    });
+
+    try {
+        withFixedRandom(0.8, () => {
+            const wildlife = createWildlife({ count: 1, bounds: FIXED_BOUNDS });
+            try {
+                const animal = wildlife.animals[0];
+                assert.equal(animal.species, 'squirrel');
+                animal.mesh.position.x = animal.anchor.x + 19;
+
+                wildlife.update(0.1);
+                for (let frame = 0; frame < 141; frame += 1) {
+                    wildlife.update(0.016);
+                }
+
+                nowSeconds = animal.respawnAt;
+                wildlife.update(0);
+                const respawnRotationY = animal.mesh.rotation.y;
+
+                wildlife.update(0);
+                assertNear(
+                    animal.mesh.rotation.y,
+                    respawnRotationY,
+                    'zero-time update after squirrel respawn must preserve rotation',
+                );
+            } finally {
+                wildlife.dispose();
+            }
+        });
+    } finally {
+        if (performanceDescriptor) {
+            Object.defineProperty(globalThis, 'performance', performanceDescriptor);
+        } else {
+            delete globalThis.performance;
+        }
+    }
+});
