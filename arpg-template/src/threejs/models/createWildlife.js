@@ -107,6 +107,7 @@ export default function createWildlife(opts = {}) {
     }
 
     function update(dt) {
+        _time += dt;
         const now = performance.now() / 1000;
 
         animals.forEach((state) => {
@@ -153,7 +154,7 @@ export default function createWildlife(opts = {}) {
                 state.facing += delta * Math.min(1, dt * 6);
                 mesh.rotation.y = state.facing;
 
-                bobAnimal(mesh, state.species, dt, true);
+                bobAnimal(mesh, state.species, true);
                 return;
             }
 
@@ -163,11 +164,11 @@ export default function createWildlife(opts = {}) {
             const dist = Math.hypot(dx, dz);
 
             if (state.idleUntil > now) {
-                bobAnimal(mesh, state.species, dt, false);
+                bobAnimal(mesh, state.species, false);
             } else if (dist < waypointTolerance) {
                 state.idleUntil = now + rand(minIdleSeconds, maxIdleSeconds);
                 pickNewWaypoint(state);
-                bobAnimal(mesh, state.species, dt, false);
+                bobAnimal(mesh, state.species, false);
             } else {
                 const dirX = dx / dist;
                 const dirZ = dz / dist;
@@ -182,7 +183,7 @@ export default function createWildlife(opts = {}) {
                 state.facing += delta * Math.min(1, dt * 5);
                 mesh.rotation.y = state.facing;
 
-                bobAnimal(mesh, state.species, dt, false);
+                bobAnimal(mesh, state.species, false);
             }
         });
     }
@@ -192,8 +193,7 @@ export default function createWildlife(opts = {}) {
      * deer walk with a sway, squirrels scurry with a fast wiggle.
      */
     let _time = 0;
-    function bobAnimal(mesh, species, dt, fleeing) {
-        _time += dt;
+    function bobAnimal(mesh, species, fleeing) {
         const t = _time;
         const speedMul = fleeing ? 2.2 : 1.0;
         if (species === 'rabbit') {
