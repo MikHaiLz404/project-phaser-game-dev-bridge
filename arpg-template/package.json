@@ -12,6 +12,7 @@
     "test:player-controller-dispose": "node --test tests/player-controller-dispose.test.mjs",
     "test:player-arm-sides": "node --test tests/player-arm-sides.test.mjs",
     "test:sword-axes": "node tests/sword-axes.test.mjs",
+    "test:shoe-hierarchy": "node tests/shoe-hierarchy.test.mjs",
     "test:goblin-patrol": "node tests/goblin-patrol-idle.test.mjs",
     "test:wildlife-animation-clock": "node --test tests/wildlife-animation-clock.test.mjs",
     "test:threeworld-reboot": "node tests/threeworld-reboot.test.mjs",

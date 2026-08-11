@@ -212,16 +212,47 @@ export default function createCharacter(spec = {}) {
     root.add(legR);
 
     // Shoes (small dark boxes at bottom of legs)
-    // Sit at y=0.04 so the shoe box (height 0.08) rests on the ground plane (y=0).
+    //
+    // PAT-27: shoes are parented under a foot socket that lives beneath
+    // each leg, NOT directly under the character root. When the leg
+    // rotates (walk / run / attack), the shoe inherits the full affine
+    // transform of the leg — position, rotation, scale, and any shear
+    // from a rotated non-uniform ancestor — instead of staying root-
+    // relative and visually detaching from the foot.
+    //
+    //   • footSocketL/R — Group at the bottom of the leg mesh in
+    //     leg-local space (y = -0.55, the bottom of the 0.55-tall leg
+    //     mesh that hangs from the hip pivot). Its z=0.04 forward
+    //     offset mirrors the legacy root-owned bind so the toe still
+    //     points in the character's facing direction.
+    //   • shoeL/R — Mesh with its center at y = +halfHeight (0.04) in
+    //     foot-socket-local space, so the shoe box (0.08 tall) rests on
+    //     the ground plane (y=0) in the neutral pose.
+    //
+    // Foot IK is explicitly out of scope; the foot socket follows the
+    // leg's authored swing. If/when ground adaptation is added, the
+    // socket stays the right attachment point.
     const shoeGeom = new THREE.BoxGeometry(0.2, 0.08, 0.26);
+    const footSocketL = new THREE.Group();
+    footSocketL.name = 'footSocketL';
+    footSocketL.position.set(0, -0.55, 0.04);  // bottom of leg mesh, forward offset
+    legL.add(footSocketL);
+    const footSocketR = new THREE.Group();
+    footSocketR.name = 'footSocketR';
+    footSocketR.position.set(0, -0.55, 0.04);
+    legR.add(footSocketR);
+
     const shoeL = new THREE.Mesh(shoeGeom, matShoes);
-    shoeL.position.set(-0.13, 0.04, 0.04);
+    shoeL.name = 'shoeL';
+    shoeL.position.set(0, 0.04, 0);  // center sits halfHeight above the socket
     shoeL.castShadow = true;
-    root.add(shoeL);
+    footSocketL.add(shoeL);
+
     const shoeR = new THREE.Mesh(shoeGeom, matShoes);
-    shoeR.position.set(0.13, 0.04, 0.04);
+    shoeR.name = 'shoeR';
+    shoeR.position.set(0, 0.04, 0);
     shoeR.castShadow = true;
-    root.add(shoeR);
+    footSocketR.add(shoeR);
 
     // Apply scale to root
     root.scale.setScalar(scale);
